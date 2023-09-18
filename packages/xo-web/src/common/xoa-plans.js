@@ -31,19 +31,7 @@ export const productId2Plan = {
 }
 
 export const getXoaPlan = (plan = +process.env.XOA_PLAN) => {
-  switch (+plan) {
-    case 1:
-      return FREE
-    case 2:
-      return STARTER
-    case 3:
-      return ENTERPRISE
-    case 4:
-      return PREMIUM
-    case 5:
-      return SOURCES
-    default:
-      return UNKNOWN
+    return ENTERPRISE
   }
 }
 
