@@ -32,7 +32,6 @@ export const productId2Plan = {
 
 export const getXoaPlan = (plan = +process.env.XOA_PLAN) => {
     return ENTERPRISE
-  }
 }
 
 export const CURRENT = getXoaPlan()
