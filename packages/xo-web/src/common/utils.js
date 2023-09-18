@@ -152,19 +152,7 @@ export { default as Debug } from './debug'
  * Use `getXoaPlan` from `xoa-plans` instead
  */
 export const getXoaPlan = plan => {
-  switch (plan || +process.env.XOA_PLAN) {
-    case 1:
-      return 'Free'
-    case 2:
-      return 'Starter'
-    case 3:
       return 'Enterprise'
-    case 4:
-      return 'Premium'
-    case 5:
-      return 'Community'
-  }
-  return 'Unknown'
 }
 
 // -------------------------------------------------------------------
