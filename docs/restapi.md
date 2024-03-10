@@ -121,9 +121,19 @@ Content-Type: application/x-ndjson
 {"name_label":"Debian 10 Cloudinit self-service","power_state":"Halted","url":"/rest/v0/vms/5019156b-f40d-bc57-835b-4a259b177be1"}
 ```
 
+## Task monitoring
+
+When fetching a task record, the special `wait` query string can be used. If its value is `result` it will wait for the task to be resolved (either success or failure) before returning, otherwise it will wait for the next change of state.
+
+```sh
+curl \
+  -b authenticationToken=KQxQdm2vMiv7jBIK0hgkmgxKzemd8wSJ7ugFGKFkTbs \
+  'https://xo.example.org/rest/v0/tasks/0lr4zljbe?wait=result'
+```
+
 ## Properties update
 
-> This feature is restricted to `name_label` and `name_description` at the moment.
+> This feature is restricted to `name_label`, `name_description` and `tags` at the moment.
 
 ```sh
 curl \
@@ -133,6 +143,30 @@ curl \
   -H 'Accept: application/json' \
   -d '{ "name_label": "The new name", "name_description": "The new description" }' \
   'https://xo.example.org/rest/v0/vms/770aa52a-fd42-8faf-f167-8c5c4a237cac'
+```
+
+### Collections
+
+For collection properties, like `tags`, it can be more practical to touch a single item without impacting the others.
+
+An item can be created with `PUT <collection>/<item id>` and can be destroyed with `DELETE <collection>/<item id>`.
+
+Adding a tag:
+
+```sh
+curl \
+-X PUT \
+-b authenticationToken=KQxQdm2vMiv7jBIK0hgkmgxKzemd8wSJ7ugFGKFkTbs \
+'https://xo.example.org/rest/v0/vms/770aa52a-fd42-8faf-f167-8c5c4a237cac/tags/My%20tag'
+```
+
+Removing a tag:
+
+```sh
+curl \
+  -X DELETE \
+  -b authenticationToken=KQxQdm2vMiv7jBIK0hgkmgxKzemd8wSJ7ugFGKFkTbs \
+  'https://xo.example.org/rest/v0/vms/770aa52a-fd42-8faf-f167-8c5c4a237cac/tags/My%20tag'
 ```
 
 ## VM and VDI destruction
@@ -175,9 +209,50 @@ curl \
   > myDisk.vhd
 ```
 
+The following optional query parameters are supported for VDI export:
+
+- `preferNbd`: will use NBD for export if available
+- `nbdConcurrency=<integer>`: set the number of concurrent stream per disk if NBD is enabled, default 1
+
+## VM Import
+
+A VM can be imported by posting to `/rest/v0/pools/:id/vms`.
+
+```sh
+curl \
+  -X POST \
+  -b authenticationToken=KQxQdm2vMiv7jBIK0hgkmgxKzemd8wSJ7ugFGKFkTbs \
+  -T myDisk.raw \
+  'https://xo.example.org/rest/v0/pools/355ee47d-ff4c-4924-3db2-fd86ae629676/vms?sr=357bd56c-71f9-4b2a-83b8-3451dec04b8f' \
+  | cat
+```
+
+The `sr` query parameter can be used to specify on which SR the VM should be imported, if not specified, the default SR will be used.
+
+> Note: the final `| cat` ensures cURL's standard output is not a TTY, which is necessary for upload stats to be dislayed.
+
 ## VDI Import
 
-A VHD or a raw export can be imported on an SR to create a new VDI at `/rest/v0/srs/<sr uuid>/vdis`.
+### Existing VDI
+
+A VHD or a raw export can be imported in an existing VDI respectively at `/rest/v0/vdis/<uuid>.vhd` and `/rest/v0/vdis/<uuid>.raw`.
+
+> Note: the size of the VDI must match exactly the size of VDI that was previously exported.
+
+```sh
+curl \
+  -X PUT \
+  -b authenticationToken=KQxQdm2vMiv7jBIK0hgkmgxKzemd8wSJ7ugFGKFkTbs \
+  -T myDisk.vhd \
+  'https://xo.example.org/rest/v0/vdis/1a269782-ea93-4c4c-897a-475365f7b674.vhd' \
+  | cat
+```
+
+> Note: the final `| cat` ensures cURL's standard output is not a TTY, which is necessary for upload stats to be dislayed.
+
+### New VDI
+
+An export can also be imported on an SR to create a new VDI at `/rest/v0/srs/<sr uuid>/vdis`.
 
 ```sh
 curl \
@@ -204,12 +279,45 @@ The following query parameters are supported to customize the created VDI:
 
 To see the actions available on a given object, get the collection at `/rest/v0/<type>/<uuid>/actions`.
 
+The field `params` contains the [JSON schema](https://json-schema.org/) for the parameters. Use `fields=params` to see it when fetching the collection.
+
 For example, to list all actions on a given VM:
 
 ```sh
 curl \
   -b authenticationToken=KQxQdm2vMiv7jBIK0hgkmgxKzemd8wSJ7ugFGKFkTbs \
-  'https://xo.example.org/rest/v0/vms/770aa52a-fd42-8faf-f167-8c5c4a237cac/actions'
+  'https://xo.example.org/rest/v0/vms/770aa52a-fd42-8faf-f167-8c5c4a237cac/actions?fields=params'
+```
+
+Example response:
+
+```json
+[
+  {
+    "href": "/rest/v0/vms/770aa52a-fd42-8faf-f167-8c5c4a237cac/actions/clean_reboot"
+  },
+  {
+    "href": "/rest/v0/vms/770aa52a-fd42-8faf-f167-8c5c4a237cac/actions/clean_shutdown"
+  },
+  {
+    "href": "/rest/v0/vms/770aa52a-fd42-8faf-f167-8c5c4a237cac/actions/hard_reboot"
+  },
+  {
+    "href": "/rest/v0/vms/770aa52a-fd42-8faf-f167-8c5c4a237cac/actions/hard_shutdown"
+  },
+  {
+    "params": {
+      "name_label": {
+        "type": "string",
+        "optional": true
+      }
+    },
+    "href": "/rest/v0/vms/770aa52a-fd42-8faf-f167-8c5c4a237cac/actions/snapshot"
+  },
+  {
+    "href": "/rest/v0/vms/770aa52a-fd42-8faf-f167-8c5c4a237cac/actions/start"
+  }
+]
 ```
 
 ### Start an action
@@ -237,9 +345,7 @@ curl \
   'https://xo.example.org/rest/v0/vms/770aa52a-fd42-8faf-f167-8c5c4a237cac/actions/snapshot'
 ```
 
-By default, actions are asynchronous and return the reference of the task associated with the request.
-
-> Tasks monitoring is still under construcration and will come in a future release :)
+By default, actions are asynchronous and return the reference of the task associated with the request (see [_Task monitoring_](#task-monitoring)).
 
 The `?sync` flag can be used to run the action synchronously without requiring task monitoring. The result of the action will be returned encoded as JSON:
 

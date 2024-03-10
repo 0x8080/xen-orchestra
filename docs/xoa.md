@@ -58,18 +58,18 @@ Please only use this if you have issues with [the default way to deploy XOA](ins
 
 ### Via a bash script
 
-Alternatively, you can deploy it by connecting to your XenServer host and executing the following:
+Alternatively, you can deploy it by connecting to your XCP-ng/XenServer host and executing the following:
 
 ```sh
 bash -c "$(wget -qO- https://xoa.io/deploy)"
 ```
 
 :::tip
-This won't write or modify anything on your XenServer host: it will just import the XOA VM into your default storage repository.
+This won't write or modify anything on your XCP-ng/XenServer host: it will just import the XOA VM into your default storage repository.
 :::
 
 :::warning
-If you are using an old XenServer version, you may get a `curl` error:
+If you are using an old XCP-ng/XenServer version, you may get a `curl` error:
 
 ```
 curl: (35) error:1407742E:SSL routines:SSL23_GET_SERVER_HELLO:tlsv1 alert protocol version
@@ -92,6 +92,21 @@ Follow the instructions:
 ### Via a manual XVA download
 
 You can also download XOA from xen-orchestra.com in an XVA file. Once you've got the XVA file, you can import it with `xe vm-import filename=xoa_unified.xva` or via XenCenter.
+
+If you want to use static IP address for your appliance:
+
+```sh
+xe vm-param-set uuid="$uuid" \
+  xenstore-data:vm-data/ip="$ip" \
+  xenstore-data:vm-data/netmask="$netmask" \
+  xenstore-data:vm-data/gateway="$gateway"
+```
+
+If you want to replace the default DNS server:
+
+```sh
+xe vm-param-set uuid="$uuid" xenstore-data:vm-data/dns="$dns"
+```
 
 After the VM is imported, you just need to start it with `xe vm-start vm="XOA"` or with XenCenter.
 
@@ -157,14 +172,14 @@ If you want to go back in DHCP, just run `xoa network dhcp`
 
 ### Other interfaces
 
-If you need to configure other interfaces than `eth0`, you can use the same commands with the name of the interface to configure as supplementary argument:
+If you need to configure other interfaces than the default one, you can use the same commands with the name of the interface to configure as supplementary argument:
 
 ```console
-$ xoa network static eth1
+$ xoa network static enX1
 ? Static IP for this machine 192.168.100.120
 ? Network mask (eg 255.255.255.0) 255.255.255.0
 
-$ xoa network dhcp eth1
+$ xoa network dhcp enX1
 ```
 
 ## Firewall

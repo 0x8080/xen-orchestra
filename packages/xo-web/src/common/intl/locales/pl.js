@@ -1298,9 +1298,6 @@ export default {
   // Original text: 'Invalid parameters'
   configIpErrorTitle: undefined,
 
-  // Original text: 'IP address and netmask required'
-  configIpErrorMessage: undefined,
-
   // Original text: 'Static IP address'
   staticIp: undefined,
 
@@ -2733,12 +2730,6 @@ export default {
 
   // Original text: "Xen Orchestra"
   xenOrchestra: 'Xen Orchestra',
-
-  // Original text: "server"
-  xenOrchestraServer: 'serwer',
-
-  // Original text: "web client"
-  xenOrchestraWeb: 'web klient',
 
   // Original text: "No pro support provided!"
   noProSupport: 'No pro support provided!',

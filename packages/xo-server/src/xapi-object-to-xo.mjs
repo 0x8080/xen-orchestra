@@ -98,6 +98,7 @@ const TRANSFORMS = {
   pool(obj) {
     const cpuInfo = obj.cpu_info
     return {
+      auto_poweron: obj.other_config.auto_poweron === 'true',
       crashDumpSr: link(obj, 'crash_dump_SR'),
       current_operations: obj.current_operations,
       default_SR: link(obj, 'default_SR'),
@@ -118,6 +119,7 @@ const TRANSFORMS = {
       },
       suspendSr: link(obj, 'suspend_image_SR'),
       zstdSupported: obj.restrictions.restrict_zstd_export === 'false',
+      vtpmSupported: obj.restrictions.restrict_vtpm === 'false',
 
       // TODO
       // - ? networks = networksByPool.items[pool.id] (network.$pool.id)
@@ -327,6 +329,34 @@ const TRANSFORMS = {
 
     const { creation } = xoData.extract(obj) ?? {}
 
+    let $container
+    if (obj.resident_on !== 'OpaqueRef:NULL') {
+      // resident_on is set when the VM is running (or paused or suspended on a host)
+      $container = link(obj, 'resident_on')
+    } else {
+      // if the VM is halted, the $container is the pool
+      $container = link(obj, 'pool')
+
+      // unless one of its VDI is on a non shared SR
+      //
+      // linked objects may not be there when this code run, and it will only be
+      // refreshed when the VM XAPI record change, this value is not guaranteed
+      // to be up-to-date, but it practice it appears to work fine thanks to
+      // `VBDs` and `current_operations` changing when a VDI is
+      // added/removed/migrated
+      for (const vbd of obj.$VBDs) {
+        const sr = vbd?.$VDI?.$SR
+        if (sr !== undefined && !sr.shared) {
+          const pbd = sr.$PBDs[0]
+          const hostId = pbd && link(pbd, 'host')
+          if (hostId !== undefined) {
+            $container = hostId
+            break
+          }
+        }
+      }
+    }
+
     const vm = {
       // type is redefined after for controllers/, templates &
       // snapshots.
@@ -400,6 +430,7 @@ const TRANSFORMS = {
       installTime: metrics && toTimestamp(metrics.install_time),
       name_description: obj.name_description,
       name_label: obj.name_label,
+      notes: otherConfig['xo:notes'],
       other: otherConfig,
       os_version: (guestMetrics && guestMetrics.os_version) || null,
       parent: link(obj, 'parent'),
@@ -413,20 +444,21 @@ const TRANSFORMS = {
       suspendSr: link(obj, 'suspend_SR'),
       tags: obj.tags,
       VIFs: link(obj, 'VIFs'),
+      VTPMs: link(obj, 'VTPMs'),
       virtualizationMode: domainType,
 
       // deprecated, use pvDriversVersion instead
       xenTools,
       ...getVmGuestToolsProps(obj),
 
-      // TODO: handle local VMs (`VM.get_possible_hosts()`).
-      $container: isRunning ? link(obj, 'resident_on') : link(obj, 'pool'),
+      $container,
       $VBDs: link(obj, 'VBDs'),
 
       // TODO: dedupe
       VGPUs: link(obj, 'VGPUs'),
       $VGPUs: link(obj, 'VGPUs'),
       nicType: obj.platform.nic_type,
+      xenStoreData: obj.xenstore_data,
     }
 
     if (isHvm) {
@@ -509,7 +541,8 @@ const TRANSFORMS = {
       // TODO: Should it replace usage?
       physical_usage: +obj.physical_utilisation,
 
-      allocationStrategy: ALLOCATION_BY_TYPE[srType],
+      allocationStrategy:
+        srType === 'linstor' ? obj.$PBDs[0]?.device_config.provisioning ?? 'unknown' : ALLOCATION_BY_TYPE[srType],
       current_operations: obj.current_operations,
       inMaintenanceMode: obj.other_config['xo:maintenanceState'] !== undefined,
       name_description: obj.name_description,
@@ -559,15 +592,18 @@ const TRANSFORMS = {
       disallowUnplug: Boolean(obj.disallow_unplug),
       gateway: obj.gateway,
       ip: obj.IP,
+      ipv6: obj.IPv6,
       mac: obj.MAC,
       management: Boolean(obj.management), // TODO: find a better name.
       carrier: Boolean(metrics && metrics.carrier),
       mode: obj.ip_configuration_mode,
+      ipv6Mode: obj.ipv6_configuration_mode,
       mtu: +obj.MTU,
       netmask: obj.netmask,
       // A non physical PIF is a "copy" of an existing physical PIF (same device)
       // A physical PIF cannot be unplugged
       physical: Boolean(obj.physical),
+      primaryAddressType: obj.primary_address_type,
       vlan: +obj.VLAN,
       speed: metrics && +metrics.speed,
       $host: link(obj, 'host'),
@@ -591,6 +627,7 @@ const TRANSFORMS = {
       usage: +obj.physical_utilisation,
       VDI_type: obj.type,
       current_operations: obj.current_operations,
+      other_config: obj.other_config,
 
       $SR: link(obj, 'SR'),
       $VBDs: link(obj, 'VBDs'),
@@ -693,6 +730,10 @@ const TRANSFORMS = {
   // -----------------------------------------------------------------
 
   task(obj) {
+    let applies_to
+    if (obj.other_config.applies_to) {
+      applies_to = obj.$xapi.getObject(obj.other_config.applies_to, undefined).uuid
+    }
     return {
       allowedOperations: obj.allowed_operations,
       created: toTimestamp(obj.created),
@@ -704,7 +745,7 @@ const TRANSFORMS = {
       result: obj.result,
       status: obj.status,
       xapiRef: obj.$ref,
-
+      applies_to,
       $host: link(obj, 'resident_on'),
     }
   },
@@ -839,6 +880,59 @@ const TRANSFORMS = {
       pgpus: link(obj, 'enabled_on_PGPUs'),
       vendorName: obj.vendor_name,
       vgpus: link(obj, 'VGPUs'),
+    }
+  },
+
+  // -----------------------------------------------------------------
+
+  vtpm(obj) {
+    return {
+      type: 'VTPM',
+
+      vm: link(obj, 'VM'),
+    }
+  },
+
+  // -----------------------------------------------------------------
+
+  pusb(obj) {
+    let description = obj.vendor_desc
+    if (obj.product_desc.trim() !== '') {
+      description += ` - ${obj.product_desc.trim()}`
+    }
+    return {
+      type: 'PUSB',
+
+      description,
+      host: link(obj, 'host'),
+      passthroughEnabled: obj.passthrough_enabled,
+      speed: obj.speed,
+      usbGroup: link(obj, 'USB_group'),
+      vendorId: obj.vendor_id,
+      version: obj.version,
+    }
+  },
+
+  // -----------------------------------------------------------------
+
+  vusb(obj) {
+    return {
+      type: 'VUSB',
+
+      vm: link(obj, 'VM'),
+      currentlyAttached: obj.currently_attached,
+      usbGroup: link(obj, 'USB_group'),
+    }
+  },
+
+  // -----------------------------------------------------------------
+
+  usb_group(obj) {
+    return {
+      type: 'USB_group',
+
+      PUSB: link(obj, 'PUSBs'),
+      VUSB: link(obj, 'VUSBs'),
     }
   },
 }

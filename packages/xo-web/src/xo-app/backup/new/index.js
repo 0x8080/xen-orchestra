@@ -188,6 +188,8 @@ const getInitialState = ({ preSelectedVmIds, setHomeVmIdsSelection, suggestedExc
     deltaMode: false,
     drMode: false,
     name: '',
+    nbdConcurrency: 1,
+    nRetriesVmBackupFailures: 0,
     preferNbd: false,
     remotes: [],
     schedules: {},
@@ -629,6 +631,16 @@ const New = decorate([
             preferNbd,
           })
         },
+      setNbdConcurrency({ setGlobalSettings }, nbdConcurrency) {
+        setGlobalSettings({
+          nbdConcurrency,
+        })
+      },
+      setNRetriesVmBackupFailures({ setGlobalSettings }, nRetries) {
+        setGlobalSettings({
+          nRetriesVmBackupFailures: nRetries,
+        })
+      },
     },
     computed: {
       compressionId: generateId,
@@ -637,6 +649,8 @@ const New = decorate([
       inputFullIntervalId: generateId,
       inputMaxExportRate: generateId,
       inputPreferNbd: generateId,
+      inputNbdConcurrency: generateId,
+      inputNRetriesVmBackupFailures: generateId,
       inputTimeoutId: generateId,
 
       // In order to keep the user preference, the offline backup is kept in the DB
@@ -748,6 +762,8 @@ const New = decorate([
       concurrency,
       fullInterval,
       maxExportRate,
+      nbdConcurrency = 1,
+      nRetriesVmBackupFailures = 0,
       offlineBackup,
       offlineSnapshot,
       preferNbd,
@@ -983,6 +999,17 @@ const New = decorate([
                         />
                       </FormGroup>
                       <FormGroup>
+                        <label htmlFor={state.inputNRetriesVmBackupFailures}>
+                          <strong>{_('nRetriesVmBackupFailures')}</strong>
+                        </label>
+                        <Number
+                          id={state.inputNRetriesVmBackupFailures}
+                          min={0}
+                          onChange={effects.setNRetriesVmBackupFailures}
+                          value={nRetriesVmBackupFailures}
+                        />
+                      </FormGroup>
+                      <FormGroup>
                         <label htmlFor={state.inputTimeoutId}>
                           <strong>{_('timeout')}</strong>
                         </label>{' '}
@@ -1037,6 +1064,20 @@ const New = decorate([
                             name='preferNbd'
                             value={preferNbd}
                             onChange={effects.setPreferNbd}
+                          />
+                        </FormGroup>
+                      )}
+                      {state.isDelta && (
+                        <FormGroup>
+                          <label htmlFor={state.inputNbdConcurrency}>
+                            <strong>{_('nbdConcurrency')}</strong>
+                          </label>
+                          <Number
+                            id={state.inputNbdConcurrency}
+                            min={1}
+                            onChange={effects.setNbdConcurrency}
+                            value={nbdConcurrency}
+                            disabled={!state.inputPreferNbd}
                           />
                         </FormGroup>
                       )}

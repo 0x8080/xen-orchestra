@@ -1491,9 +1491,6 @@ export default {
   // Original text: "Invalid parameters"
   configIpErrorTitle: 'Invalid parameters',
 
-  // Original text: "IP address and netmask required"
-  configIpErrorMessage: 'IP cím and netmask required',
-
   // Original text: "Static IP address"
   staticIp: 'Static IP cím',
 
@@ -3002,12 +2999,6 @@ export default {
 
   // Original text: "Xen Orchestra"
   xenOrchestra: 'CLOUDXO',
-
-  // Original text: "Xen Orchestra server"
-  xenOrchestraServer: 'Cloudxo szerver',
-
-  // Original text: "Xen Orchestra web client"
-  xenOrchestraWeb: 'Cloudxo web kliens',
 
   // Original text: "No pro support provided!"
   noProSupport: 'Nincsen pro-szupport!',

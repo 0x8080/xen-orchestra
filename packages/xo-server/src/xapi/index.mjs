@@ -12,6 +12,7 @@ import mixin from '@xen-orchestra/mixin/legacy.js'
 import ms from 'ms'
 import noop from 'lodash/noop.js'
 import once from 'lodash/once.js'
+import pick from 'lodash/pick.js'
 import tarStream from 'tar-stream'
 import uniq from 'lodash/uniq.js'
 import { asyncMap } from '@xen-orchestra/async-map'
@@ -22,7 +23,7 @@ import { decorateWith } from '@vates/decorate-with'
 import { defer as deferrable } from 'golike-defer'
 import { limitConcurrency } from 'limit-concurrency-decorator'
 import { parseDuration } from '@vates/parse-duration'
-import { PassThrough } from 'stream'
+import { PassThrough, pipeline } from 'stream'
 import { forbiddenOperation, operationFailed } from 'xo-common/api-errors.js'
 import { extractOpaqueRef, parseDateTime, Xapi as XapiBase } from '@xen-orchestra/xapi'
 import { Ref } from 'xen-api'
@@ -65,6 +66,7 @@ export default class Xapi extends XapiBase {
     maxUncoalescedVdis,
     restartHostTimeout,
     vdiExportConcurrency,
+    vmEvacuationConcurrency,
     vmExportConcurrency,
     vmMigrationConcurrency = 3,
     vmSnapshotConcurrency,
@@ -75,6 +77,7 @@ export default class Xapi extends XapiBase {
     this._guessVhdSizeOnImport = guessVhdSizeOnImport
     this._maxUncoalescedVdis = maxUncoalescedVdis
     this._restartHostTimeout = parseDuration(restartHostTimeout)
+    this._vmEvacuationConcurrency = vmEvacuationConcurrency
 
     //  close event is emitted when the export is canceled via browser. See https://github.com/vatesfr/xen-orchestra/issues/5535
     const waitStreamEnd = async stream => fromEvents(await stream, ['end', 'close'])
@@ -162,14 +165,16 @@ export default class Xapi extends XapiBase {
 
   async emergencyShutdownHost(hostId) {
     const host = this.getObject(hostId)
-    const vms = host.$resident_VMs
     log.debug(`Emergency shutdown: ${host.name_label}`)
-    await asyncMap(vms, vm => {
+
+    await this.call('host.disable', host.$ref)
+
+    await asyncMap(host.$resident_VMs, vm => {
       if (!vm.is_control_domain) {
         return ignoreErrors.call(this.callAsync('VM.suspend', vm.$ref))
       }
     })
-    await this.call('host.disable', host.$ref)
+
     await this.callAsync('host.shutdown', host.$ref)
   }
 
@@ -191,22 +196,36 @@ export default class Xapi extends XapiBase {
         return network.$ref
       }
     })(pool.other_config['xo:migrationNetwork'])
-    try {
-      try {
-        await (migrationNetworkRef === undefined
-          ? this.callAsync('host.evacuate', hostRef)
-          : this.callAsync('host.evacuate', hostRef, migrationNetworkRef))
-      } catch (error) {
-        if (error.code === 'MESSAGE_PARAMETER_COUNT_MISMATCH') {
-          log.warn(
-            'host.evacuate with a migration network is not supported on this host, falling back to evacuating without the migration network',
-            { error }
-          )
-          await this.callAsync('host.evacuate', hostRef)
-        } else {
-          throw error
+
+    // host ref
+    // migration network: optional and might not be supported
+    // batch size: optional and might not be supported
+    const params = [hostRef, migrationNetworkRef ?? Ref.EMPTY, this._vmEvacuationConcurrency]
+
+    // Removes n params from the end and keeps removing until a non-empty param is found
+    const popParamsAndTrim = (n = 0) => {
+      let last
+      let i = 0
+      while (i < n || (last = params[params.length - 1]) === undefined || last === Ref.EMPTY) {
+        if (params.length <= 1) {
+          throw new Error('not enough params left')
         }
+        params.pop()
+        i++
       }
+    }
+
+    popParamsAndTrim()
+
+    try {
+      await pRetry(() => this.callAsync('host.evacuate', ...params), {
+        delay: 0,
+        when: { code: 'MESSAGE_PARAMETER_COUNT_MISMATCH' },
+        onRetry: error => {
+          log.warn(error)
+          popParamsAndTrim(1)
+        },
+      })
     } catch (error) {
       if (!force) {
         await this.call('host.enable', hostRef)
@@ -372,7 +391,7 @@ export default class Xapi extends XapiBase {
 
     const onVmCreation = nameLabel !== undefined ? vm => vm.set_name_label(nameLabel) : null
 
-    const vm = await targetXapi._getOrWaitObject(await targetXapi._importVm(stream, sr, onVmCreation))
+    const vm = await targetXapi._getOrWaitObject(await targetXapi.VM_import(stream, sr.$ref, onVmCreation))
 
     return {
       vm,
@@ -476,16 +495,36 @@ export default class Xapi extends XapiBase {
       bypassAssert = false,
     }
   ) {
+    const srRef = sr !== undefined ? hostXapi.getObject(sr).$ref : undefined
     const getDefaultSrRef = once(() => {
-      if (sr !== undefined) {
-        return hostXapi.getObject(sr).$ref
-      }
       const defaultSr = host.$pool.$default_SR
       if (defaultSr === undefined) {
         throw new Error(`This operation requires a default SR to be set on the pool ${host.$pool.name_label}`)
       }
       return defaultSr.$ref
     })
+
+    // VDIs/SRs mapping
+    // For VDI:
+    // - If a map of VDI -> SR was explicitly passed: use it
+    // - Else if SR was explicitly passed: use it
+    // - Else if VDI SR is reachable from the destination host: use it
+    // - Else: use the migration main SR or the pool's default SR (error if none of them is defined)
+    function getMigrationSrRef(vdi) {
+      if (mapVdisSrs[vdi.$id] !== undefined) {
+        return hostXapi.getObject(mapVdisSrs[vdi.$id]).$ref
+      }
+
+      if (srRef !== undefined) {
+        return srRef
+      }
+
+      if (isSrConnected(vdi.$SR)) {
+        return vdi.$SR.$ref
+      }
+
+      return getDefaultSrRef()
+    }
 
     const hostPbds = new Set(host.PBDs)
     const connectedSrs = new Map()
@@ -499,10 +538,6 @@ export default class Xapi extends XapiBase {
     }
 
     // VDIs/SRs mapping
-    // For VDI:
-    // - If SR was explicitly passed: use it
-    // - Else if VDI SR is reachable from the destination host: use it
-    // - Else: use the migration main SR or the pool's default SR (error if none of them is defined)
     // For VDI-snapshot:
     // - If VDI-snapshot is an orphan snapshot: same logic as a VDI
     // - Else: don't add it to the map (VDI -> SR). It will be managed by the XAPI (snapshot will be migrated to the same SR as its parent active VDI)
@@ -515,12 +550,7 @@ export default class Xapi extends XapiBase {
         if (vdi.$snapshot_of !== undefined) {
           continue
         }
-        vdis[vdi.$ref] =
-          mapVdisSrs[vdi.$id] !== undefined
-            ? hostXapi.getObject(mapVdisSrs[vdi.$id]).$ref
-            : isSrConnected(vdi.$SR)
-            ? vdi.$SR.$ref
-            : getDefaultSrRef()
+        vdis[vdi.$ref] = getMigrationSrRef(vdi)
       }
     }
 
@@ -657,36 +687,6 @@ export default class Xapi extends XapiBase {
     )
   }
 
-  @cancelable
-  async _importVm($cancelToken, stream, sr, onVmCreation = undefined) {
-    const taskRef = await this.task_create('VM import')
-    const query = {}
-
-    if (sr != null) {
-      query.sr_id = sr.$ref
-    }
-
-    if (onVmCreation != null) {
-      this.waitObject(
-        obj => obj != null && obj.current_operations != null && taskRef in obj.current_operations,
-        onVmCreation
-      )
-    }
-
-    const vmRef = await this.putResource($cancelToken, stream, '/import/', {
-      query,
-      task: taskRef,
-    }).then(extractOpaqueRef, error => {
-      // augment the error with as much relevant info as possible
-      error.pool_master = this.pool.$master
-      error.SR = sr
-
-      throw error
-    })
-
-    return vmRef
-  }
-
   @decorateWith(deferrable)
   async _importOvaVm($defer, stream, { descriptionLabel, disks, memory, nameLabel, networks, nCpus, tables }, sr) {
     // 1. Create VM.
@@ -743,9 +743,11 @@ export default class Xapi extends XapiBase {
           stream.resume()
           return
         }
+        const nodeStream = new PassThrough()
+        pipeline(stream, nodeStream, () => {})
         const table = tables[entry.name]
         const vhdStream = await vmdkToVhd(
-          stream,
+          nodeStream, // tar-stream stream are not node stream
           table.grainLogicalAddressList,
           table.grainFileOffsetList,
           compression[entry.name] === 'gzip',
@@ -793,7 +795,7 @@ export default class Xapi extends XapiBase {
     const sr = srId && this.getObject(srId)
 
     if (type === 'xva') {
-      return /* await */ this._getOrWaitObject(await this._importVm(stream, sr))
+      return /* await */ this._getOrWaitObject(await this.VM_import(stream, sr?.$ref))
     }
 
     if (type === 'ova') {
@@ -1115,9 +1117,9 @@ export default class Xapi extends XapiBase {
     return snap
   }
 
-  async exportVdiAsVmdk(vdi, filename, { cancelToken = CancelToken.none, base } = {}) {
+  async exportVdiAsVmdk(vdi, filename, { cancelToken = CancelToken.none, base, nbdConcurrency, preferNbd } = {}) {
     vdi = this.getObject(vdi)
-    const params = { cancelToken, format: VDI_FORMAT_VHD }
+    const params = { cancelToken, format: VDI_FORMAT_VHD, nbdConcurrency, preferNbd }
     if (base !== undefined) {
       params.base = base
     }
@@ -1326,7 +1328,10 @@ export default class Xapi extends XapiBase {
         )
       ),
     ])
-    buffer = addMbr(buffer)
+    // only add the MBR for windows VM
+    if (vm.platform.viridian === 'true') {
+      buffer = addMbr(buffer)
+    }
     const vdi = await this._getOrWaitObject(
       await this.VDI_create({
         name_label: 'XO CloudConfigDrive',
@@ -1415,6 +1420,36 @@ export default class Xapi extends XapiBase {
           {}
         )) !== 'false'
       )
+    } catch (error) {
+      if (error.code === 'XENAPI_MISSING_PLUGIN' || error.code === 'UNKNOWN_XENAPI_PLUGIN_FUNCTION') {
+        return null
+      } else {
+        throw error
+      }
+    }
+  }
+
+  async getSmartctlHealth(hostId) {
+    try {
+      return JSON.parse(await this.call('host.call_plugin', this.getObject(hostId).$ref, 'smartctl.py', 'health', {}))
+    } catch (error) {
+      if (error.code === 'XENAPI_MISSING_PLUGIN' || error.code === 'UNKNOWN_XENAPI_PLUGIN_FUNCTION') {
+        return null
+      } else {
+        throw error
+      }
+    }
+  }
+
+  async getSmartctlInformation(hostId, deviceNames) {
+    try {
+      const informations = JSON.parse(
+        await this.call('host.call_plugin', this.getObject(hostId).$ref, 'smartctl.py', 'information', {})
+      )
+      if (deviceNames === undefined) {
+        return informations
+      }
+      return pick(informations, deviceNames)
     } catch (error) {
       if (error.code === 'XENAPI_MISSING_PLUGIN' || error.code === 'UNKNOWN_XENAPI_PLUGIN_FUNCTION') {
         return null

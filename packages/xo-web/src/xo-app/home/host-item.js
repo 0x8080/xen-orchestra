@@ -9,7 +9,7 @@ import semver from 'semver'
 import SingleLineRow from 'single-line-row'
 import HomeTags from 'home-tags'
 import Tooltip from 'tooltip'
-import { Row, Col } from 'grid'
+import { Col } from 'grid'
 import { Text } from 'editable'
 import {
   addTag,
@@ -30,6 +30,7 @@ import {
   createSelector,
 } from 'selectors'
 import { injectState } from 'reaclette'
+import { Host, Pool } from 'render-xo-item'
 
 import MiniStats from './mini-stats'
 import styles from './index.css'
@@ -126,13 +127,16 @@ export default class HostItem extends Component {
       message,
     }
   }
+  _getAreHostsVersionsEqual = () => this.props.state.areHostsVersionsEqualByPool[this.props.item.$pool]
 
   _getAlerts = createSelector(
     () => this.props.needsRestart,
     () => this.props.item,
     this._isMaintained,
     () => this.state.isHostTimeConsistentWithXoaTime,
-    (needsRestart, host, isMaintained, isHostTimeConsistentWithXoaTime) => {
+    this._getAreHostsVersionsEqual,
+    () => this.props.state.hostsByPoolId[this.props.item.$pool],
+    (needsRestart, host, isMaintained, isHostTimeConsistentWithXoaTime, areHostsVersionsEqual, poolHosts) => {
       const alerts = []
 
       if (needsRestart) {
@@ -201,6 +205,25 @@ export default class HostItem extends Component {
           ),
         })
       }
+
+      if (!areHostsVersionsEqual) {
+        alerts.push({
+          level: 'danger',
+          render: (
+            <div>
+              <p>
+                <Icon icon='alarm' /> {_('notAllHostsHaveTheSameVersion', { pool: <Pool id={host.$pool} link /> })}
+              </p>
+              <ul>
+                {map(poolHosts, host => (
+                  <li>{_('keyValue', { key: <Host id={host.id} />, value: host.version })}</li>
+                ))}
+              </ul>
+            </div>
+          ),
+        })
+      }
+
       return alerts
     }
   )
@@ -325,22 +348,24 @@ export default class HostItem extends Component {
           </SingleLineRow>
         </BlockLink>
         {(this.state.expanded || expandAll) && (
-          <Row>
-            <Col mediumSize={2} className={styles.itemExpanded} style={{ marginTop: '0.3rem' }}>
+          <SingleLineRow>
+            <Col mediumSize={2} className={styles.itemExpanded}>
               <span>
-                {host.cpus.cores}x <Icon icon='cpu' /> &nbsp; {formatSizeShort(host.memory.size)} <Icon icon='memory' />{' '}
-                &nbsp; v{host.version.slice(0, 3)}
+                {host.cpus.cores}x <Icon icon='cpu' /> &nbsp; {formatSizeShort(host.memory.size)} <Icon icon='memory' />
               </span>
             </Col>
-            <Col mediumSize={4}>
-              <span style={{ fontSize: '1.4em' }}>
+            <Col mediumSize={1} className={styles.itemExpanded}>
+              {host.productBrand} {host.version}
+            </Col>
+            <Col mediumSize={3} className={styles.itemExpanded}>
+              <div style={{ fontSize: '1.4em' }}>
                 <HomeTags type='host' labels={host.tags} onDelete={this._removeTag} onAdd={this._addTag} />
-              </span>
+              </div>
             </Col>
             <Col mediumSize={6} className={styles.itemExpanded}>
               <MiniStats fetch={this._fetchStats} />
             </Col>
-          </Row>
+          </SingleLineRow>
         )}
       </div>
     )

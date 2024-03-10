@@ -68,7 +68,7 @@ const normalize = state => {
   schedules = mapValues(schedules, ({ id, ...schedule }) => schedule)
   settings[''] = {
     ...advancedSettings,
-    reportWhen: reportWhen.value,
+    reportWhen: reportWhen.value ?? reportWhen,
     reportRecipients: reportRecipients.length !== 0 ? reportRecipients : undefined,
   }
   return {
@@ -124,6 +124,8 @@ const NewMirrorBackup = decorate([
         setAdvancedSettings({ timeout: timeout !== undefined ? timeout * 3600e3 : undefined }),
       setMaxExportRate: ({ setAdvancedSettings }, rate) =>
         setAdvancedSettings({ maxExportRate: rate !== undefined ? rate * (1024 * 1024) : undefined }),
+      setNRetriesVmBackupFailures: ({ setAdvancedSettings }, nRetriesVmBackupFailures) =>
+        setAdvancedSettings({ nRetriesVmBackupFailures }),
       setSourceRemote: (_, obj) => () => ({
         sourceRemote: obj === null ? {} : obj.value,
       }),
@@ -204,6 +206,7 @@ const NewMirrorBackup = decorate([
       inputConcurrencyId: generateId,
       inputTimeoutId: generateId,
       inputMaxExportRateId: generateId,
+      inputNRetriesVmBackupFailures: generateId,
       isBackupInvalid: state =>
         state.isMissingName || state.isMissingBackupMode || state.isMissingSchedules || state.isMissingRetention,
       isFull: state => state.mode === 'full',
@@ -231,7 +234,7 @@ const NewMirrorBackup = decorate([
   }),
   injectState,
   ({ state, effects, intl: { formatMessage } }) => {
-    const { concurrency, timeout, maxExportRate } = state.advancedSettings
+    const { concurrency, timeout, maxExportRate, nRetriesVmBackupFailures = 0 } = state.advancedSettings
     return (
       <form id={state.formId}>
         <Container>
@@ -315,6 +318,17 @@ const NewMirrorBackup = decorate([
                         />
                       </FormGroup>
                       <FormGroup>
+                        <label htmlFor={state.inputNRetriesVmBackupFailures}>
+                          <strong>{_('nRetriesVmBackupFailures')}</strong>
+                        </label>
+                        <Number
+                          id={state.inputNRetriesVmBackupFailures}
+                          min={0}
+                          onChange={effects.setNRetriesVmBackupFailures}
+                          value={nRetriesVmBackupFailures}
+                        />
+                      </FormGroup>
+                      <FormGroup>
                         <label htmlFor={state.inputTimeoutId}>
                           <strong>{_('timeout')}</strong>
                         </label>{' '}
@@ -351,8 +365,8 @@ const NewMirrorBackup = decorate([
                     state.isMissingBackupMode
                       ? 'mirrorBackupVms'
                       : state.isFull
-                      ? 'mirrorFullBackup'
-                      : 'mirrorIncrementalBackup'
+                        ? 'mirrorFullBackup'
+                        : 'mirrorIncrementalBackup'
                   )}
                   <Link className='btn btn-primary pull-right' target='_blank' to='/settings/remotes'>
                     <Icon icon='settings' /> <strong>{_('remotesSettings')}</strong>

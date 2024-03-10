@@ -7,6 +7,7 @@ const messages = {
   alpha: 'Alpha',
   alerts: 'Alerts',
   creation: 'Creation',
+  connected: 'Connected',
   description: 'Description',
   deleteSourceVm: 'Delete source VM',
   disable: 'Disable',
@@ -25,8 +26,10 @@ const messages = {
   esxiImportStopOnErrorDescription: 'Stop on the first error when importing VMs',
   nImportVmsInParallel: 'Number of VMs to import in parallel',
   stopOnError: 'Stop on error',
+  uuid: 'UUID',
   vmSrUsage: 'Storage: {used} used of {total} ({free} free)',
 
+  new: 'New',
   notDefined: 'Not defined',
   status: 'Status',
   statusConnecting: 'Connecting',
@@ -37,6 +40,7 @@ const messages = {
   errorUnknownItem: 'Unknown {type}',
   generateNewMacAddress: 'Generate new MAC addresses',
   memoryFree: '{memoryFree} RAM free',
+  configured: 'Configured',
   notConfigured: 'Not configured',
   utcDate: 'UTC date',
   utcTime: 'UTC time',
@@ -96,6 +100,7 @@ const messages = {
   destinationSR: 'Destination SR',
   destinationNetwork: 'Destination network',
   dhcp: 'DHCP',
+  id: 'ID',
   ip: 'IP',
   static: 'Static',
   user: 'User',
@@ -116,6 +121,8 @@ const messages = {
   advancedSettings: 'Advanced settings',
   forceUpgrade: 'Force upgrade',
   txChecksumming: 'TX checksumming',
+  thick: 'Thick',
+  thin: 'Thin',
   unknownSize: 'Unknown size',
   installedCertificates: 'Installed certificates',
   expiry: 'Expiry',
@@ -126,12 +133,17 @@ const messages = {
   installNewCertificate: 'Install new certificate',
   replaceExistingCertificate: 'Replace existing certificate',
   customFields: 'Custom fields',
+  addColor: 'Add color',
   addCustomField: 'Add custom field',
+  advancedTagCreation: 'Advanced tag creation',
   availableXoaPremium: 'Available in XOA Premium',
   editCustomField: 'Edit custom field',
   deleteCustomField: 'Delete custom field',
   onlyAvailableXoaUsers: 'Only available to XOA users',
+  removeColor: 'Remove color',
   xcpNg: 'XCP-ng',
+  noFileSelected: 'No file selected',
+  nRetriesVmBackupFailures: 'Number of retries if VM backup fails',
 
   // ----- Modals -----
   alertOk: 'OK',
@@ -238,6 +250,9 @@ const messages = {
   xoaCheck: 'XOA check',
   closeTunnel: 'Close tunnel',
   createSupportTicket: 'Create a support ticket',
+  restartXoServer: 'Restart XO Server',
+  restartXoServerConfirm:
+    'Restarting XO Server will interrupt any backup job or XO task that is currently running. Xen Orchestra will also be unavailable for a few seconds. Are you sure you want to restart XO Server?',
   openTunnel: 'Open tunnel',
   supportCommunity: 'The XOA check and the support tunnel are available in XOA.',
   supportTunnel: 'Support tunnel',
@@ -248,6 +263,14 @@ const messages = {
 
   // ----- User Profile -----
   editUserProfile: 'Edit my settings {username}',
+  xsClientId: 'XenServer Client ID',
+  uploadClientId: 'Upload Client ID file',
+  forgetClientId: 'Forget Client ID',
+  forgetXsCredentialsConfirm: 'Are you sure you want to forget your XenServer Client ID?',
+  forgetXsCredentialsError: 'Could not forget Client ID',
+  forgetXsCredentialsSuccess: 'Client ID forgotten',
+  setXsCredentialsError: 'Could not upload Client ID',
+  setXsCredentialsSuccess: 'Client ID uploaded',
 
   // ----- Home view ------
   allVms: 'All VMs',
@@ -311,7 +334,7 @@ const messages = {
   powerState: 'Power state',
   srSharedType: 'Shared {type}',
   warningHostTimeTooltip: 'Host time and XOA time are not consistent with each other',
-  selectExistingTags: 'Select from existing tags',
+  notAllHostsHaveTheSameVersion: 'Not all hosts within {pool} have the same version',
   sortByDisksUsage: 'Disks usage',
 
   // ----- Home snapshots -----
@@ -555,6 +578,8 @@ const messages = {
   editBackupSmartNotResidentOn: 'Not resident on',
   editBackupSmartPools: 'Pools',
   editBackupSmartTags: 'Tags',
+  editBackupSmartTagsInfo:
+    "VMs with tags in the form of <b>xo:no-bak</b> or <b>xo:no-bak=Reason</b>won't be included in any backup.For example, ephemeral VMs created by health check have this tag",
   sampleOfMatchingVms: 'Sample of matching VMs',
   backupReplicatedVmsInfo:
     'Replicated VMs (VMs with Continuous Replication or Disaster Recovery tag) must be excluded!',
@@ -567,6 +592,7 @@ const messages = {
   editJobNotFound: "The job you're trying to edit wasn't found",
   preferNbd: 'Use NBD protocol to transfer disk if available',
   preferNbdInformation: 'A network accessible by XO or the proxy must have NBD enabled',
+  nbdConcurrency: 'Number of NBD connection per disk',
 
   // ------ New Remote -----
   newRemote: 'New file system remote',
@@ -845,8 +871,12 @@ const messages = {
   srDisconnectAll: 'Disconnect from all hosts',
   srForget: 'Forget this SR',
   srsForget: 'Forget SRs',
+  nSrsForget: 'Forget {nSrs, number} SR{nSrs, plural, one {} other{s}}',
   srRemoveButton: 'Remove this SR',
   srNoVdis: 'No VDIs in this storage',
+  srReclaimSpace: 'Reclaim freed space',
+  srReclaimSpaceConfirm: 'Are you sure you want to reclaim freed space on this SR?',
+  srReclaimSpaceNotSupported: 'Space reclaim not supported. Only supported on block based/LVM based SRs.',
 
   // ----- SR disks tab -----
   multipleActiveVdis: '{firstVdi} and {nVdis} more',
@@ -876,6 +906,7 @@ const messages = {
   // ----- Pool advanced tab -----
   backupNetwork: 'Backup network',
   crashDumpSr: 'Crash dump SR',
+  defaultMigrationNetwork: 'Default migration network',
   poolEditAll: 'Edit all',
   poolHaStatus: 'High Availability',
   poolHaEnabled: 'Enabled',
@@ -885,11 +916,18 @@ const messages = {
   poolSupportSourceUsers: 'XCP-ng Pro Support not available for source users',
   poolSupportXcpngOnly: 'Only available for pool of XCP-ng hosts',
   poolLicenseAlreadyFullySupported: 'The pool is already fully supported',
+  rollingPoolReboot: 'Rolling Pool Reboot',
+  rollingPoolRebootHaWarning: 'High Availability is enabled. This will automatically disable it during the reboot.',
+  rollingPoolRebootLoadBalancerWarning:
+    'Load Balancer plugin is running. This will automatically pause it during the reboot.',
+  rollingPoolRebootMessage:
+    'Are you sure you want to start a Rolling Pool Reboot? Running VMs will be migrated back and forth and this can take a while. Scheduled backups that may concern this pool will be disabled.',
+
   setpoolMaster: 'Master',
   syslogRemoteHost: 'Remote syslog host',
-  defaultMigrationNetwork: 'Default migration network',
   syncNetbox: 'Synchronize with Netbox',
   syncNetboxWarning: 'Are you sure you want to synchronize with Netbox?',
+  updateMissingNetwork: '{networkID} not found, please select a new one',
   // ----- Pool host tab -----
   hostNameLabel: 'Name',
   hostDescription: 'Description',
@@ -913,6 +951,10 @@ const messages = {
   noNbdConnection: 'No NBD Connection',
   nbdConnection: 'NBD Connection',
   insecureNbdConnection: 'Insecure NBD Connection (not allowed through XO)',
+  // ----- Pool patches tab -----
+  multiHostPoolUpdate: "Rolling pool update can only work when there's multiple hosts in a pool with a shared storage",
+  nVmsRunningOnLocalStorage:
+    '{nVms, number} VM{nVms, plural, one {} other {s}} {nVms, plural, one {is} other {are}} currently running and using at least one local storage. A shared storage for all your VMs is needed to start a rolling pool update',
   // ----- Pool stats tab -----
   poolNoStats: 'No stats',
   poolAllHosts: 'All hosts',
@@ -942,14 +984,21 @@ const messages = {
   // ----- Host actions ------
   disableMaintenanceMode: 'Disable maintenance mode',
   enableMaintenanceMode: 'Enable maintenance mode',
+  slaveHostMoreUpToDateThanMasterAfterRestart:
+    'It appears that this host will be more up-to-date than the master ({master}) after the restart. This will result in the slave being unable to contact the pool master. Please update and restart your master node first.',
   startHostLabel: 'Start',
   stopHostLabel: 'Stop',
   enableHostLabel: 'Enable',
   disableHostLabel: 'Disable',
   restartHostAgent: 'Restart toolstack',
+  smartRebootBypassCurrentVmCheck:
+    'As the XOA is hosted on the host that is scheduled for a reboot, it will also be restarted. Consequently, XO won\'t be able to resume VMs, and VMs with the "Protect from accidental shutdown" option enabled will not have this option reactivated automatically.',
   smartRebootHostLabel: 'Smart reboot',
   smartRebootHostTooltip: 'Suspend resident VMs, reboot host and resume VMs automatically',
   forceRebootHostLabel: 'Force reboot',
+  forceSmartRebootHost:
+    'Smart Reboot failed because {nVms, number} VM{nVms, plural, one {} other {s}} ha{nVms, plural, one {s} other {ve}} {nVms, plural, one {its} other {their}} Suspend operation blocked. Would you like to force?',
+  restartAnyway: 'Restart anyway',
   rebootHostLabel: 'Reboot',
   noHostsAvailableErrorTitle: 'Error while restarting host',
   noHostsAvailableErrorMessage:
@@ -965,6 +1014,8 @@ const messages = {
   // ----- host stat tab -----
   statLoad: 'Load average',
   // ----- host advanced tab -----
+  enabled: 'Enabled',
+  disksSystemHealthy: 'All disks are healthy ✅',
   editHostIscsiIqnTitle: 'Edit iSCSI IQN',
   editHostIscsiIqnMessage:
     'Are you sure you want to edit the iSCSI IQN? This may result in failures connecting to existing SRs if the host is attached to iSCSI SRs.',
@@ -977,6 +1028,9 @@ const messages = {
   hardwareHostSettingsLabel: 'Hardware',
   hyperThreading: 'Hyper-threading (SMT)',
   hyperThreadingNotAvailable: 'HT detection is only available on XCP-ng 7.6 and higher',
+  hostDownloadLogs: 'Download system logs',
+  hostDownloadLogsContainEntireHostLogs:
+    "The logs you are about to download contain the entire host's logs, potentially hundreds of megabytes. Please note that these logs can be technical and complex to analyze, requiring some expertise.",
   hostAddress: 'Address',
   hostStatus: 'Status',
   hostBuildNumber: 'Build number',
@@ -1012,6 +1066,8 @@ const messages = {
   hostRemoteSyslog: 'Remote syslog',
   hostIommu: 'IOMMU',
   hostNoCertificateInstalled: 'No certificates installed on this host',
+  pusbDevices: 'PUSB Devices',
+  smartctlPluginNotInstalled: 'Smartctl plugin not installed',
   supplementalPacks: 'Installed supplemental packs',
   supplementalPackNew: 'Install new supplemental pack',
   supplementalPackPoolNew: 'Install supplemental pack on every host',
@@ -1022,7 +1078,9 @@ const messages = {
   supplementalPackInstallErrorMessage: 'The installation of the supplemental pack failed.',
   supplementalPackInstallSuccessTitle: 'Installation success',
   supplementalPackInstallSuccessMessage: 'Supplemental pack successfully installed.',
+  systemDisksHealth: 'System disks health',
   uniqueHostIscsiIqnInfo: 'The iSCSI IQN must be unique. ',
+  vendorId: 'Vendor ID',
   // ----- Host net tabs -----
   networkCreateButton: 'Add a network',
   pifDeviceLabel: 'Device',
@@ -1038,11 +1096,13 @@ const messages = {
   defaultLockingMode: 'Default locking mode',
   pifConfigureIp: 'Configure IP address',
   configIpErrorTitle: 'Invalid parameters',
-  configIpErrorMessage: 'IP address and netmask required',
   staticIp: 'Static IP address',
+  staticIpv6: 'Static IPv6 address',
   netmask: 'Netmask',
   dns: 'DNS',
   gateway: 'Gateway',
+  ipRequired: 'An IP address is required',
+  netmaskRequired: 'Netmask required',
   // ----- Host storage tabs -----
   addSrDeviceButton: 'Add a storage',
   srType: 'Type',
@@ -1073,7 +1133,7 @@ const messages = {
   installAllPatchesContent: 'To install all patches go to pool.',
   installAllPatchesRedirect: 'Go to pool',
   installAllPatchesOnHostContent:
-    'This will automatically restart the toolstack. Running VMs will not be affected. Are you sure you want to continue and install all patches on this host?',
+    'The pool master must always be updated FIRST. Updating will automatically restart the toolstack. Running VMs will not be affected. Are you sure you want to continue and install all patches on this host?',
   patchRelease: 'Release',
   updatePluginNotInstalled:
     'An error occurred while fetching the patches. Please make sure the updater plugin is installed by running `yum install xcp-ng-updater` on the host.',
@@ -1101,6 +1161,9 @@ const messages = {
   vmsHaveCds: '{nVms, number} VM{nVms, plural, one {} other {s}} {nVms, plural, one {has} other {have}} CDs',
   ejectCds: 'Eject CDs',
   highAvailabilityNotDisabledTooltip: 'High Availability must be disabled',
+  xsCredentialsMissing:
+    'In order to install XenServer updates, you first need to configure your XenServer Client ID. See {link}.',
+  xsCredentialsMissingShort: 'Missing XenServer Client ID',
 
   // ----- Pool storage tabs -----
   defaultSr: 'Default SR',
@@ -1150,6 +1213,9 @@ const messages = {
     'Enabling this will allow the VM to automatically install Citrix PV drivers from Windows Update. This only includes drivers, the Citrix management agent must still be separately installed.',
   windowsToolsModalWarning:
     'If you have previously installed XCP-ng tools instead of Citrix tools, this option will break your VM.',
+  editVmNotes: 'Edit VM notes',
+  supportsMarkdown: 'Supports Markdown syntax',
+  vmNotesTooLong: 'VM notes cannot be longer than 2048 characters',
 
   // ----- VM stat tab -----
   statsCpu: 'CPU usage',
@@ -1167,6 +1233,7 @@ const messages = {
   copyToClipboardLabel: 'Copy',
   ctrlAltDelButtonLabel: 'Ctrl+Alt+Del',
   ctrlAltDelConfirmation: 'Send Ctrl+Alt+Del to VM?',
+  disabledConsole: 'Console is disabled for this VM',
   multilineCopyToClipboard: 'Multiline copy',
   tipLabel: 'Tip:',
   hideHeaderTooltip: 'Hide info',
@@ -1204,6 +1271,7 @@ const messages = {
   vdiNameDescription: 'Description',
   vdiPool: 'Pool',
   vdiTags: 'Tags',
+  vdiTasks: 'VDI tasks',
   vdiSize: 'Size',
   vdiSr: 'SR',
   vdiVms: 'VMs',
@@ -1338,6 +1406,11 @@ const messages = {
   logAction: 'Action',
 
   // ----- VM advanced tab -----
+  createVtpm: 'Create a VTPM',
+  deleteVtpm: 'Delete the VTPM',
+  deleteVtpmWarning:
+    'If the VTPM is in use, removing it will result in a dangerous data loss. Are you sure you want to remove the VTPM?',
+  poolAutoPoweronDisabled: 'Auto power on is disabled at pool level, click to fix automatically.',
   vmRemoveButton: 'Remove',
   vmConvertToTemplateButton: 'Convert to template',
   vmSwitchVirtualizationMode: 'Convert to {mode}',
@@ -1367,9 +1440,12 @@ const messages = {
   srHaTooltip: 'SR used for High Availability',
   nestedVirt: 'Nested virtualization',
   vmAffinityHost: 'Affinity host',
+  vmNeedToBeHalted: 'The VM needs to be halted',
   vmVga: 'VGA',
   vmVideoram: 'Video RAM',
   vmNicType: 'NIC type',
+  vtpm: 'VTPM',
+  vtpmRequireUefi: 'A UEFI boot firmware is necessary to use a VTPM',
   noAffinityHost: 'None',
   originalTemplate: 'Original template',
   unknownOsName: 'Unknown',
@@ -1378,6 +1454,7 @@ const messages = {
   vmLimitsLabel: 'VM limits',
   resourceSet: 'Resource set',
   resourceSetNone: 'None',
+  selectUser: 'Select user',
   suspendSr: 'Suspend SR',
   viridian: 'Viridian',
   vmCpuLimitsLabel: 'CPU limits',
@@ -1402,13 +1479,26 @@ const messages = {
   vmAddAcls: 'Add ACLs',
   addAclsErrorTitle: 'Failed to add ACL(s)',
   addAclsErrorMessage: 'User(s)/group(s) and role are required.',
+  createVusb: 'Create VUSB',
   removeAcl: 'Delete',
   moreAcls: '{nAcls, number} more…',
+  pusbDescription: 'PUSB description',
+  pusbSpeed: 'PUSB speed',
+  pusbVersion: 'PUSB version',
+  selectPusb: 'Select PUSB',
   vmBootFirmware: 'Boot firmware',
+  vmCreator: 'VM creator',
   vmDefaultBootFirmwareLabel: 'default (bios)',
   vmBootFirmwareWarningMessage:
     "You're about to change your boot firmware. This is still experimental in CH/XCP-ng 8.0. Are you sure you want to continue?",
+  setAndRestartVmFailed: 'Error on restarting and setting the VM: {vm}',
+  vmEditAndRestartModalTitle: 'VM is currently running',
+  vmEditAndRestartModalMessage:
+    'This VM is currently running, and needs to be stopped to modify this value. Restart VM and modify this value?',
 
+  vusbs: 'VUSBs',
+  vusbRemainUnplugged: 'The VUSB remain unplugged until the next shutdown/start',
+  vusbUnplugTooltip: 'Unplug until the next shutdown/start',
   // ----- VM placeholders -----
 
   vmHomeNamePlaceholder: 'Long click to add a name',
@@ -1539,13 +1629,14 @@ const messages = {
   unhealthyVdis: 'Unhealthy VDIs',
   vdisToCoalesce: 'VDIs to coalesce',
   vdisWithInvalidVhdParent: 'VDIs with invalid parent VHD',
-  srVdisToCoalesceWarning: 'This SR has more than {limitVdis, number} VDIs to coalesce',
+  srVdisToCoalesceWarning: 'This SR has {nVdis, number} VDI{nVdis, plural, one {} other {s}} to coalesce',
 
   // ----- New VM -----
   createVmModalTitle: 'Create VM',
   createVmModalWarningMessage:
     "You're about to use a large amount of resources available on the resource set. Are you sure you want to continue?",
   copyHostBiosStrings: 'Copy host BIOS strings to VM',
+  enableVtpm: 'Enable VTPM',
   newVmCreateNewVmOn: 'Create a new VM on {select}',
   newVmCreateNewVmNoPermission: 'You have no permission to create a VM',
   newVmInfoPanel: 'Info',
@@ -1615,8 +1706,11 @@ const messages = {
   newVmNetworkConfigDoc: 'Network config documentation',
   templateHasBiosStrings: 'The template already contains the BIOS strings',
   secureBootLinkToDocumentationMessage: 'Click for more information about Guest UEFI Secure Boot.',
+  seeVtpmDocumentation: 'See VTPM documentation',
   vmBootFirmwareIsUefi: 'The boot firmware is UEFI',
   destroyCloudConfigVdiAfterBoot: 'Destroy cloud config drive after first boot',
+  vtpmNotSupported: 'VTPM is only supported on pools running XCP-ng/XS 8.3 or later.',
+  warningVtpmRequired: 'This template requires a VTPM, if you proceed, the VM will likely not be able to boot.',
 
   // ----- Self -----
   resourceSets: 'Resource sets',
@@ -1651,6 +1745,9 @@ const messages = {
   resourceSetQuota: 'Used: {usage} (Total: {total})',
   resourceSetNew: 'New',
   shareVmsByDefault: 'Share VMs by default',
+  nVmsInResourceSet:
+    '{nVms, number} VM{nVms, plural, one {} other {s}} belong{nVms, plural, one {s} other {}} to this Resource Set',
+  unlimitedResourceSetUsage: 'Used: {usage}',
 
   // ---- VM import ---
   fileType: 'File type:',
@@ -1738,6 +1835,9 @@ const messages = {
   availableBackupsColumn: 'Available Backups',
   backupRestoreErrorTitle: 'Missing parameters',
   backupRestoreErrorMessage: 'Choose a SR and a backup',
+  backupisKey: 'key',
+  backupIsIncremental: 'incremental',
+  backupIsDifferencing: 'differencing',
   vmsToBackup: 'VMs to backup',
   refreshBackupList: 'Refresh backup list',
   restoreVmBackups: 'Restore',
@@ -1752,6 +1852,7 @@ const messages = {
   latest: 'latest',
   restoreVmBackupsStart: 'Start VM{nVms, plural, one {} other {s}} after restore',
   restoreVmBackupsBulkErrorTitle: 'Multi-restore error',
+  restoreVmUseDifferentialRestore: 'Use differential restore',
   restoreMetadataBackupTitle: 'Restore {item}',
   bulkRestoreMetadataBackupTitle:
     'Restore {nMetadataBackups, number} metadata backup{nMetadataBackups, plural, one {} other {s}}',
@@ -1781,6 +1882,8 @@ const messages = {
   remoteLoadBackupsFailure: 'Loading backups failed',
   remoteLoadBackupsFailureMessage: 'Failed to load backups from {name}.',
   vmsTags: 'VMs tags',
+  tagNoBak: 'VMs with this tag will not be backed up {reason, select, null {} other {({reason})}}',
+  tagNotifyOnSnapshot: 'An email will be sent when a VM with this tag is snapshotted',
 
   // ----- Restore files view -----
   restoreFiles: 'Restore backup files',
@@ -1959,6 +2062,7 @@ const messages = {
   vmsWithDuplicatedMacAddressesMessage:
     '{nVms, number} VM{nVms, plural, one {} other {s}} contain{nVms, plural, one {s} other {}} duplicate MAC addresses or {nVms, plural, one {has} other {have}} the same MAC addresses as other running VMs. Do you want to continue?',
   ignoreVdi: 'Ignore this VDI',
+  selectDestinationSr: 'Select a destination SR',
 
   // ----- Servers -----
   enableServerErrorTitle: 'Enable server',
@@ -2063,8 +2167,7 @@ const messages = {
   addHostNoHostMessage: 'No host selected to be added',
 
   // ----- About View -----
-  xenOrchestraServer: 'Xen Orchestra server',
-  xenOrchestraWeb: 'Xen Orchestra web client',
+  failedToFetchLatestMasterCommit: 'Failed to fetch latest master commit',
   noProSupport: 'Professional support missing!',
   productionUse: 'Want to use in production?',
   getSupport: 'Get pro support with the Xen Orchestra Appliance at {website}',
@@ -2082,6 +2185,9 @@ const messages = {
   xoAccount: 'Access your XO Account',
   openTicket: 'Report a problem',
   openTicketText: 'Problem? Open a ticket!',
+  xoUpToDate: 'Your Xen Orchestra is up to date',
+  xoFromSourceNotUpToDate:
+    'You are not up to date with master. {nBehind} commit{nBehind, plural, one {} other {s}} behind {nAhead, plural, =0 {} other {and {nAhead, number} commit{nAhead, plural, one {} other {s}} ahead}}',
 
   // ----- Upgrade Panel -----
   upgradeNeeded: 'Upgrade needed',
@@ -2176,11 +2282,10 @@ const messages = {
   pwdChangeError: 'Incorrect password',
   pwdChangeErrorBody: 'The old password provided is incorrect. Your password has not been changed.',
   changePasswordOk: 'OK',
-  forgetTokens: 'Forget all connection tokens',
-  forgetTokensExplained:
-    'This will prevent other clients from authenticating with existing tokens but will not kill active sessions',
-  forgetTokensSuccess: 'Successfully forgot connection tokens',
-  forgetTokensError: 'Error while forgetting connection tokens',
+  forgetTokens: 'Forget all authentication tokens',
+  forgetTokensExplained: 'This prevents authenticating with existing tokens but the one used by the current session',
+  forgetTokensSuccess: 'Successfully forgot authentication tokens',
+  forgetTokensError: 'Error while forgetting authentication tokens',
   sshKeys: 'SSH keys',
   newAuthToken: 'New token',
   newSshKey: 'New SSH key',
@@ -2323,11 +2428,9 @@ const messages = {
   srDisconnectAllModalMessage: 'This will disconnect this SR from all its hosts.',
   srsDisconnectAllModalMessage:
     'This will disconnect each selected SR from its host (local SR) or from every hosts of its pool (shared SR).',
-  srForgetModalTitle: 'Forget SR',
-  srsForgetModalTitle: 'Forget selected SRs',
-  srForgetModalMessage: "Are you sure you want to forget this SR? VDIs on this storage won't be removed.",
-  srsForgetModalMessage:
-    "Are you sure you want to forget all the selected SRs? VDIs on these storages won't be removed.",
+  forgetNSrsModalMessage: 'Are you sure you want to forget {nSrs, number} SR{nSrs, plural, one {} other{s}}?',
+  srForgetModalWarning:
+    'You will lose all the metadata, meaning all the links between the VDIs (disks) and their respective VMs. This operation cannot be undone.',
   srAllDisconnected: 'Disconnected',
   srSomeConnected: 'Partially connected',
   srAllConnected: 'Connected',
@@ -2445,6 +2548,45 @@ const messages = {
   xosanUnderlyingStorageUsage: 'Using {usage}',
   xosanCustomIpNetwork: 'Custom IP network (/24)',
   xosanIssueHostNotInNetwork: 'Will configure the host xosan network device with a static IP address and plug it in.',
+  // ----- XOSTOR -----
+  approximateFinalSize: 'Approximate final size',
+  cantFetchDisksFromNonXcpngHost: 'Unable to fetch physical disks from non-XCP-ng host',
+  diskAlreadyMounted: 'The disk is mounted on: {mountpoint}',
+  diskHasChildren: 'The disk has children',
+  diskIncompatibleXostor: 'Disk incompatible with XOSTOR',
+  diskIsReadOnly: 'The disk is Read-Only',
+  disks: 'Disks',
+  fieldRequired: '{field} is required',
+  fieldsMissing: 'Some fields are missing',
+  hostsNotSameNumberOfDisks: 'Hosts do not have the same number of disks',
+  ignoreFileSystems: 'Ignore file systems',
+  isTapdevsDisk: 'This is "tapdevs" disk',
+  licenseBoundUnknownXostor: 'License attached to an unknown XOSTOR',
+  licenseNotBoundXostor: 'No XOSTOR attached',
+  licenseExpiredXostorWarning:
+    'The license {licenseId} has expired. You can still use the SR but cannot administrate it anymore.',
+  networks: 'Networks',
+  notXcpPool: 'Not an XCP-ng pool',
+  noXostorFound: 'No XOSTOR found',
+  numberOfHosts: 'Number of hosts',
+  objectDoesNotMeetXostorRequirements: '{object} does not meet XOSTOR requirements. Refer to the documentation.',
+  onlyShowXostorRequirements: 'Only show {type} that meet XOSTOR requirements',
+  poolAlreadyHasXostor: 'Pool already has a XOSTOR',
+  poolNotRecentEnough: 'Not recent enough. Current version: {version}',
+  replication: 'Replication',
+  selectDisks: 'Select disk(s)…',
+  selectedDiskTypeIncompatibleXostor: 'Only disks of type "Disk" and "Raid" are accepted. Selected disk type: {type}.',
+  storage: 'Storage',
+  summary: 'Summary',
+  wrongNumberOfHosts: 'Wrong number of hosts',
+  xostor: 'XOSTOR',
+  xostorAvailableInXoa: 'XOSTOR is available in XOA',
+  xostorIsInBetaStage: 'XOSTOR is currently in its BETA stage. Do not use it in a production environment!',
+  xostorDiskRequired: 'At least one disk is required',
+  xostorDisksDropdownLabel: '({nDisks, number} disk{nDisks, plural, one {} other {s}}) {hostname}',
+  xostorMultipleLicenses: 'This XOSTOR has more than 1 license!',
+  xostorPackagesWillBeInstalled: '"xcp-ng-release-linstor" and "xcp-ng-linstor" will be installed on each host',
+  xostorReplicationWarning: 'If a disk dies, you will lose data',
 
   // Hub
   hubPage: 'Hub',
@@ -2570,6 +2712,9 @@ const messages = {
   proxyMultipleLicenses: 'This proxy has more than 1 license!',
   proxyUnknownVm: 'Unknown proxy VM.',
 
+  // ----- plan -----
+  onlyAvailableToEnterprise: 'Only available to Enterprise users',
+
   // ----- proxies -----
   forgetProxyApplianceTitle: 'Forget prox{n, plural, one {y} other {ies}}',
   forgetProxyApplianceMessage: 'Are you sure you want to forget {n, number} prox{n, plural, one {y} other {ies}}?',
@@ -2610,6 +2755,8 @@ const messages = {
   proxiesNeedUpgrade: 'Some proxies need to be upgraded.',
   upgradeNeededForProxies: 'Some proxies need to be upgraded. Click here to get more information.',
   xoProxyConcreteGuide: 'XO Proxy: a concrete guide',
+  someProxiesHaveErrors:
+    '{n, number} prox{n, plural, one {y} other {ies}} ha{n, plural, one {s} other {ve}} error{n, plural, one {} other {s}}',
 
   // ----- Utils -----
   secondsFormat: '{seconds, plural, one {# second} other {# seconds}}',

@@ -1990,9 +1990,6 @@ export default {
   // Original text: "Invalid parameters"
   configIpErrorTitle: 'Geçersiz parametre',
 
-  // Original text: "IP address and netmask required"
-  configIpErrorMessage: 'IP adresi ve ağ maskesi gerekli',
-
   // Original text: "Static IP address"
   staticIp: 'Statik IP adresi',
 
@@ -4010,12 +4007,6 @@ export default {
 
   // Original text: "Xen Orchestra"
   xenOrchestra: 'Xen Orchestra',
-
-  // Original text: "Xen Orchestra server"
-  xenOrchestraServer: 'Xen Orchestra sunucusu',
-
-  // Original text: "Xen Orchestra web client"
-  xenOrchestraWeb: 'Xen Orchestra web istemcisi',
 
   // Original text: "No pro support provided!"
   noProSupport: 'Hiçbir profesyonel destek verilmez!',

@@ -221,7 +221,7 @@ For multiple objects:
 
 ### Settings
 
-Settings are described in [`@xen-orchestra/backups/Backup.js](https://github.com/vatesfr/xen-orchestra/blob/master/%40xen-orchestra/backups/Backup.js).
+Settings are described in [`@xen-orchestra/backups/\_runners/VmsXapi.mjs``](https://github.com/vatesfr/xen-orchestra/blob/master/%40xen-orchestra/backups/_runners/VmsXapi.mjs).
 
 ## Writer API
 
@@ -230,6 +230,7 @@ Settings are described in [`@xen-orchestra/backups/Backup.js](https://github.com
     - `checkBaseVdis(baseUuidToSrcVdi, baseVm)`
     - `prepare({ isFull })`
     - `transfer({ timestamp, deltaExport, sizeContainers })`
+    - `updateUuidAndChain({ isVhdDifferencing, vdis })`
     - `cleanup()`
     - `healthCheck()` // is not executed if no health check sr or tag doesn't match
   - **Full**

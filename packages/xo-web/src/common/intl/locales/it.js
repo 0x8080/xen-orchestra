@@ -704,9 +704,6 @@ export default {
   // Original text: 'Host time and XOA time are not consistent with each other'
   warningHostTimeTooltip: "L'ora dello host e l'ora XOA non sono coerenti tra loro",
 
-  // Original text: 'Select from existing tags'
-  selectExistingTags: 'Seleziona da etichette esistenti',
-
   // Original text: 'Name'
   snapshotVmsName: 'Nome',
 
@@ -2386,9 +2383,6 @@ export default {
 
   // Original text: 'Invalid parameters'
   configIpErrorTitle: 'Parametri non validi',
-
-  // Original text: 'IP address and netmask required'
-  configIpErrorMessage: 'Indirizzo IP e maschera di rete richiesti',
 
   // Original text: 'Static IP address'
   staticIp: 'Indirizzo IP statico',
@@ -4696,12 +4690,6 @@ export default {
 
   // Original text: 'No host selected to be added'
   addHostNoHostMessage: 'Nessun host selezionato da aggiungere',
-
-  // Original text: 'Xen Orchestra server'
-  xenOrchestraServer: 'Server Xen Orchestra',
-
-  // Original text: 'Xen Orchestra web client'
-  xenOrchestraWeb: 'Client web Xen Orchestra',
 
   // Original text: 'Professional support missing!'
   noProSupport: 'Manca il supporto professionale!',

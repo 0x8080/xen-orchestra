@@ -1,17 +1,19 @@
 import * as multiparty from 'multiparty'
+import * as xoData from '@xen-orchestra/xapi/xoData.mjs'
 import assignWith from 'lodash/assignWith.js'
 import { asyncEach } from '@vates/async-each'
 import asyncMapSettled from '@xen-orchestra/async-map/legacy.js'
 import { Task } from '@xen-orchestra/mixins/Tasks.mjs'
 import concat from 'lodash/concat.js'
 import hrp from 'http-request-plus'
+import mapKeys from 'lodash/mapKeys.js'
 import { createLogger } from '@xen-orchestra/log'
 import { defer } from 'golike-defer'
 import { format } from 'json-rpc-peer'
 import { FAIL_ON_QUEUE } from 'limit-concurrency-decorator'
 import { getStreamAsBuffer } from 'get-stream'
-import { ignoreErrors } from 'promise-toolbox'
-import { invalidParameters, noSuchObject, operationFailed, unauthorized } from 'xo-common/api-errors.js'
+import { ignoreErrors, timeout } from 'promise-toolbox'
+import { invalidParameters, noSuchObject, unauthorized } from 'xo-common/api-errors.js'
 import { Ref } from 'xen-api'
 
 import { forEach, map, mapFilter, parseSize, safeDateFormat } from '../utils.mjs'
@@ -237,6 +239,11 @@ export const create = defer(async function ($defer, params) {
     await this.allocIpAddresses(vif.$id, concat(vif.ipv4_allowed, vif.ipv6_allowed)).catch(() => xapi.deleteVif(vif))
   }
 
+  if (params.createVtpm) {
+    const vtpmRef = await xapi.VTPM_create({ VM: xapiVm.$ref })
+    $defer.onFailure(() => xapi.call('VTPM.destroy', vtpmRef))
+  }
+
   if (params.bootAfterCreate) {
     startVmAndDestroyCloudConfigVdi(xapi, xapiVm, cloudConfigVdiUuid, params)
   }
@@ -255,6 +262,11 @@ create.params = {
   cloudConfig: {
     type: 'string',
     optional: true,
+  },
+
+  createVtpm: {
+    type: 'boolean',
+    default: false,
   },
 
   networkConfig: {
@@ -550,24 +562,14 @@ export async function migrate({
 
   await this.checkPermissions(permissions)
 
-  await this.getXapi(vm)
-    .migrateVm(vm._xapiId, this.getXapi(host), host._xapiId, {
-      sr: sr && this.getObject(sr, 'SR')._xapiId,
-      migrationNetworkId: migrationNetwork != null ? migrationNetwork._xapiId : undefined,
-      mapVifsNetworks: mapVifsNetworksXapi,
-      mapVdisSrs: mapVdisSrsXapi,
-      force,
-      bypassAssert,
-    })
-    .catch(error => {
-      if (error?.code !== undefined) {
-        // make sure we log the original error
-        log.warn('vm.migrate', { error })
-
-        throw operationFailed({ objectId: vm.id, code: error.code })
-      }
-      throw error
-    })
+  await this.getXapi(vm).migrateVm(vm._xapiId, this.getXapi(host), host._xapiId, {
+    sr: sr && this.getObject(sr, 'SR')._xapiId,
+    migrationNetworkId: migrationNetwork != null ? migrationNetwork._xapiId : undefined,
+    mapVifsNetworks: mapVifsNetworksXapi,
+    mapVdisSrs: mapVdisSrsXapi,
+    force,
+    bypassAssert,
+  })
 }
 
 migrate.params = {
@@ -622,6 +624,8 @@ warmMigration.params = {
 
 // -------------------------------------------------------------------
 
+const autoPrefix = (pfx, str) => (str.startsWith(pfx) ? str : pfx + str)
+
 export const set = defer(async function ($defer, params) {
   const VM = extract(params, 'VM')
   const xapi = this.getXapi(VM)
@@ -634,16 +638,28 @@ export const set = defer(async function ($defer, params) {
     }
 
     await this.setVmResourceSet(vmId, resourceSetId, true)
-  }
-
-  const share = extract(params, 'share')
-  if (share) {
-    await this.shareVmResourceSet(vmId)
+  } else {
+    // share is implicit in the other branch with `setVmResourceSet`
+    const share = extract(params, 'share')
+    if (share) {
+      await this.shareVmResourceSet(vmId)
+    }
   }
 
   const suspendSr = extract(params, 'suspendSr')
   if (suspendSr !== undefined) {
     await xapi.call('VM.set_suspend_SR', VM._xapiRef, suspendSr === null ? Ref.EMPTY : suspendSr._xapiRef)
+  }
+
+  const xenStoreData = extract(params, 'xenStoreData')
+  if (xenStoreData !== undefined) {
+    await this.getXapiObject(VM).update_xenstore_data(mapKeys(xenStoreData, (v, k) => autoPrefix('vm-data/', k)))
+  }
+
+  const creation = extract(params, 'creation')
+  if (creation !== undefined) {
+    const xapiVm = await this.getXapiObject(VM)
+    await xoData.set(xapiVm, { creation: { ...VM.creation, ...creation } })
   }
 
   return xapi.editVm(vmId, params, async (limits, vm) => {
@@ -677,6 +693,8 @@ set.params = {
   name_label: { type: 'string', optional: true },
 
   name_description: { type: 'string', minLength: 0, optional: true },
+
+  notes: { type: ['string', 'null'], maxLength: 2048, optional: true },
 
   high_availability: {
     optional: true,
@@ -746,13 +764,53 @@ set.params = {
 
   blockedOperations: { type: 'object', optional: true, properties: { '*': { type: ['boolean', 'null', 'string'] } } },
 
+  creation: {
+    type: 'object',
+    optional: true,
+    properties: {
+      user: { type: 'string', optional: true },
+    },
+  },
+
   suspendSr: { type: ['string', 'null'], optional: true },
+
+  xenStoreData: {
+    description: 'properties that should be set or deleted (if null) in the VM XenStore',
+    optional: true,
+    type: 'object',
+    additionalProperties: {
+      type: ['null', 'string'],
+    },
+  },
 }
 
 set.resolve = {
   VM: ['id', ['VM', 'VM-snapshot', 'VM-template'], 'administrate'],
   suspendSr: ['suspendSr', 'SR', 'administrate'],
 }
+
+// -------------------------------------------------------------------
+
+export const setAndRestart = defer(async function ($defer, params) {
+  const vm = params.VM
+  const force = extract(params, 'force')
+
+  await stop.bind(this)({ vm, force })
+
+  $defer(start.bind(this), { vm, force })
+
+  return set.bind(this)(params)
+})
+
+setAndRestart.params = {
+  // Restart options
+  force: { type: 'boolean', optional: true },
+
+  // Set params
+  ...set.params,
+}
+
+setAndRestart.resolve = set.resolve
 
 // -------------------------------------------------------------------
 
@@ -946,7 +1004,12 @@ export const snapshot = defer(async function (
     }
   }
 
-  if (resourceSet === undefined || !resourceSet.subjects.includes(user.id)) {
+  // Workaround: allow Resource Set members to snapshot a VM even though they
+  // don't have operate permissions on the SR(s)
+  if (
+    resourceSet === undefined ||
+    (!resourceSet.subjects.includes(user.id) && !user.groups.some(groupId => resourceSet.subjects.includes(groupId)))
+  ) {
     await checkPermissionOnSrs.call(this, vm)
   }
 
@@ -1004,11 +1067,7 @@ start.resolve = {
 
 // -------------------------------------------------------------------
 
-// TODO: implements timeout.
-// - if !force → clean shutdown
-// - if force is true → hard shutdown
-// - if force is integer → clean shutdown and after force seconds, hard shutdown.
-export const stop = defer(async function ($defer, { vm, force, bypassBlockedOperation = force }) {
+export const stop = defer(async function ($defer, { vm, force, forceShutdownDelay, bypassBlockedOperation = force }) {
   const xapi = this.getXapi(vm)
 
   if (bypassBlockedOperation) {
@@ -1030,13 +1089,14 @@ export const stop = defer(async function ($defer, { vm, force, bypassBlockedOper
 
   // Clean shutdown
   try {
-    await xapi.shutdownVm(vm._xapiRef)
+    await timeout.call(xapi.shutdownVm(vm._xapiRef), forceShutdownDelay, () =>
+      xapi.shutdownVm(vm._xapiRef, { hard: true })
+    )
   } catch (error) {
     const { code } = error
     if (code === 'VM_MISSING_PV_DRIVERS' || code === 'VM_LACKS_FEATURE_SHUTDOWN') {
       throw invalidParameters('clean shutdown requires PV drivers')
     }
-
     throw error
   }
 })
@@ -1044,6 +1104,7 @@ export const stop = defer(async function ($defer, { vm, force, bypassBlockedOper
 stop.params = {
   id: { type: 'string' },
   force: { type: 'boolean', optional: true },
+  forceShutdownDelay: { type: 'number', default: 0 },
   bypassBlockedOperation: { type: 'boolean', optional: true },
 }
 
@@ -1264,7 +1325,8 @@ async function import_({ data, sr, type = 'xva', url }) {
       throw invalidParameters('URL import is only compatible with XVA')
     }
 
-    return (await xapi.importVm(await hrp(url), { srId, type })).$id
+    const ref = await xapi.VM_import(await hrp(url), sr._xapiRef)
+    return xapi.call('VM.get_uuid', ref)
   }
 
   return {
@@ -1320,19 +1382,9 @@ import_.resolve = {
 
 export { import_ as import }
 
-export async function importFromEsxi({
-  host,
-  network,
-  password,
-  sr,
-  sslVerify = true,
-  stopSource = false,
-  thin = false,
-  user,
-  vm,
-}) {
+export async function importFromEsxi({ host, network, password, sr, sslVerify = true, stopSource = false, user, vm }) {
   const task = await this.tasks.create({ name: `importing vm ${vm}` })
-  return task.run(() => this.migrationfromEsxi({ host, user, password, sslVerify, thin, vm, sr, network, stopSource }))
+  return task.run(() => this.migrationfromEsxi({ host, user, password, sslVerify, vm, sr, network, stopSource }))
 }
 
 importFromEsxi.params = {
@@ -1342,7 +1394,6 @@ importFromEsxi.params = {
   sr: { type: 'string' },
   sslVerify: { type: 'boolean', optional: true },
   stopSource: { type: 'boolean', optional: true },
-  thin: { type: 'boolean', optional: true },
   user: { type: 'string' },
   vm: { type: 'string' },
 }
@@ -1376,7 +1427,7 @@ export async function importMultipleFromEsxi({
       await asyncEach(
         vms,
         async vm => {
-          await Task.run({ data: { name: `importing vm ${vm}` } }, async () => {
+          await Task.run({ properties: { name: `importing vm ${vm}` } }, async () => {
             try {
               const vmUuid = await this.migrationfromEsxi({
                 host,

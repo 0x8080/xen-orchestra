@@ -94,9 +94,9 @@ uri = 'tcp://db:password@hostname:port'
 
 ## Proxy for updates and patches
 
-To check if your hosts are up-to-date, we need to access `http://updates.xensource.com/XenServer/updates.xml`.
+To check if your hosts are up-to-date, we need to access `https://updates.ops.xenserver.com/xenserver/updates.xml`.
 
-And to download the patches, we need access to `http://support.citrix.com/supportkc/filedownload?`.
+And to download the patches, we need access to `https://fileservice.citrix.com/direct/v2/download/secured/support/article/*/downloads/*.zip`.
 
 To do that behind a corporate proxy, just add the `httpProxy` variable to match your current proxy configuration.
 
@@ -117,6 +117,22 @@ On XOA, the log file for XO-server is in `/var/log/syslog`. It contains all the 
 ## Reverse proxy
 
 If you don't want to have Xen Orchestra exposed directly outside, or just integrating it with your existing infrastructure, you can use a Reverse Proxy.
+
+First of all you need to allow Xen Orchestra to use `X-Forwarded-*` headers to determine the IP addresses of clients:
+
+```toml
+[http]
+# Accepted values for this setting:
+# - false (default): do not use the headers
+# - true: always use the headers
+# - a list of trusted addresses: the headers will be used only if the connection
+#   is coming from one of these addresses
+#
+# More info about the accepted values: https://www.npmjs.com/package/proxy-addr?activeTab=readme#proxyaddrreq-trust
+#
+# > Note: X-Forwarded-* headers are easily spoofed and the detected IP addresses are unreliable.
+useForwardedHeaders = ['127.0.0.1']
+```
 
 ### Apache
 

@@ -76,6 +76,8 @@ defaultSignInPage = '/signin'
 throttlingDelay = '2 seconds'
 
 [backups]
+autoUnmountPartitionDelay = '24h'
+
 disableMergeWorker = false
 
 # Mode to use for newly created backup directories
@@ -104,6 +106,9 @@ writeBlockConcurrency = 16
 [blockedAtOptions]
 enabled = false
 threshold = 1000
+
+[http]
+useForwardedHeaders = false
 
 # Helmet handles HTTP security via headers
 #
@@ -137,8 +142,14 @@ port = 80
 # https://github.com/nodejs/node/issues/46574
 requestTimeout = 0
 
+# These mount points are exposed without needing to be authenticated.
+[http.publicMounts]
+'/robots.txt' = './robots.txt'
+
+# These mount points are exposed only when authenticated.
 [http.mounts]
-'/' = '../xo-web/dist'
+'/' = '../xo-web/dist/'
+'/v6' = '../../@xen-orchestra/web/dist/'
 
 [logs]
 # Display all logs matching this filter, regardless of their level
@@ -150,6 +161,7 @@ level = 'info'
 [logs.transport.console]
 
 [plugins]
+lookupPaths = ['./node_modules', '../', '/usr/local/lib/node_modules']
 
 [remoteOptions]
 mountsDir = '/run/xo-server/mounts'
@@ -172,6 +184,7 @@ ignoreVmSnapshotResources = false
 restartHostTimeout = '20 minutes'
 maxUncoalescedVdis = 1
 vdiExportConcurrency = 12
+vmEvacuationConcurrency = 3
 vmExportConcurrency = 2
 vmSnapshotConcurrency = 2
 

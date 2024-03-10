@@ -546,8 +546,8 @@ export default class XenServers {
     return xapi === undefined
       ? 'disconnected'
       : this._serverIdsByPool[xapi.pool?.$id] === id
-      ? 'connected'
-      : 'connecting'
+        ? 'connected'
+        : 'connecting'
   }
 
   async getAllXenServers() {
@@ -641,7 +641,7 @@ export default class XenServers {
 
   async rollingPoolUpdate($defer, pool) {
     const app = this._app
-
+    await app.checkFeatureAuthorization('ROLLING_POOL_UPDATE')
     const [schedules, jobs] = await Promise.all([app.getAllSchedules(), app.getAllJobs('backup')])
 
     const poolId = pool.id
@@ -686,7 +686,7 @@ export default class XenServers {
       $defer(() => app.loadPlugin('load-balancer'))
     }
 
-    await this.getXapi(pool).rollingPoolUpdate()
+    await this.getXapi(pool).rollingPoolUpdate({ xsCredentials: app.apiContext.user.preferences.xsCredentials })
   }
 }
 

@@ -1,23 +1,19 @@
 import filter from 'lodash/filter.js'
 import find from 'lodash/find.js'
-import groupBy from 'lodash/groupBy.js'
-import mapValues from 'lodash/mapValues.js'
 import pickBy from 'lodash/pickBy.js'
 import some from 'lodash/some.js'
 import unzip from 'unzipper'
 import { asyncEach } from '@vates/async-each'
 import { createLogger } from '@xen-orchestra/log'
-import { decorateWith } from '@vates/decorate-with'
+import { decorateObject } from '@vates/decorate-with'
 import { defer as deferrable } from 'golike-defer'
-import { incorrectState } from 'xo-common/api-errors.js'
-import { extractOpaqueRef, parseDateTime } from '@xen-orchestra/xapi'
-import { timeout } from 'promise-toolbox'
+import { extractOpaqueRef } from '@xen-orchestra/xapi'
 
 import ensureArray from '../../_ensureArray.mjs'
 import { debounceWithKey } from '../../_pDebounceWithKey.mjs'
 import { forEach, mapFilter, parseXml } from '../../utils.mjs'
 
-import { isHostRunning, useUpdateSystem } from '../utils.mjs'
+import { useUpdateSystem } from '../utils.mjs'
 
 // TOC -------------------------------------------------------------------------
 
@@ -58,14 +54,11 @@ const listMissingPatches = debounceWithKey(_listMissingPatches, LISTING_DEBOUNCE
 
 // =============================================================================
 
-export default {
-  // raw { uuid: patch } map translated from updates.xensource.com/XenServer/updates.xml
+const methods = {
+  // raw { uuid: patch } map translated from updates.ops.xenserver.com/xenserver/updates.xml
   // FIXME: should be static
-  @decorateWith(debounceWithKey, 24 * 60 * 60 * 1000, function () {
-    return this
-  })
   async _getXenUpdates() {
-    const response = await this.xo.httpRequest('https://updates.xensource.com/XenServer/updates.xml')
+    const response = await this.xo.httpRequest('https://updates.ops.xenserver.com/xenserver/updates.xml')
 
     const data = parseXml(await response.buffer()).patchdata
 
@@ -329,7 +322,7 @@ export default {
   },
 
   // Legacy XS patches: upload a patch on a pool before installing it
-  async _legacyUploadPatch(uuid) {
+  async _legacyUploadPatch(uuid, xsCredentials) {
     // check if the patch has already been uploaded
     try {
       return this.getObjectByUuid(uuid)
@@ -342,7 +335,8 @@ export default {
       throw new Error('no such patch ' + uuid)
     }
 
-    let stream = await this.xo.httpRequest(patchInfo.url)
+    const { username, apikey } = xsCredentials
+    let stream = await this.xo.httpRequest(patchInfo.url, { auth: `${username}:${apikey}` })
     stream = await new Promise((resolve, reject) => {
       const PATCH_RE = /\.xsupdate$/
       stream
@@ -367,7 +361,7 @@ export default {
   // ----------
 
   // upload patch on a VDI on a shared SR
-  async _uploadPatch($defer, uuid) {
+  async _uploadPatch($defer, uuid, xsCredentials) {
     log.debug(`downloading patch ${uuid}`)
 
     const patchInfo = (await this._getXenUpdates()).patches[uuid]
@@ -375,7 +369,8 @@ export default {
       throw new Error('no such patch ' + uuid)
     }
 
-    let stream = await this.xo.httpRequest(patchInfo.url)
+    const { username, apikey } = xsCredentials
+    let stream = await this.xo.httpRequest(patchInfo.url, { auth: `${username}:${apikey}` })
     stream = await new Promise((resolve, reject) => {
       stream
         .pipe(unzip.Parse())
@@ -402,13 +397,20 @@ export default {
     return vdi
   },
 
-  _poolWideInstall: deferrable(async function ($defer, patches) {
+  async _poolWideInstall($defer, patches, xsCredentials) {
+    // New XS patching system: https://support.citrix.com/article/CTX473972/upcoming-changes-in-xencenter
+    if (xsCredentials?.username === undefined || xsCredentials?.apikey === undefined) {
+      throw new Error(
+        'XenServer credentials not found. See https://xen-orchestra.com/docs/updater.html#xenserver-updates'
+      )
+    }
+
     // Legacy XS patches
     if (!useUpdateSystem(this.pool.$master)) {
       // for each patch: pool_patch.pool_apply
       for (const p of patches) {
         const [patch] = await Promise.all([
-          this._legacyUploadPatch(p.uuid),
+          this._legacyUploadPatch(p.uuid, xsCredentials),
           this._ejectToolsIsos(this.pool.$master.$ref),
         ])
 
@@ -420,15 +422,22 @@ export default {
 
     // for each patch: pool_update.introduce → pool_update.pool_apply
     for (const p of patches) {
-      const [vdi] = await Promise.all([this._uploadPatch($defer, p.uuid), this._ejectToolsIsos()])
+      const [vdi] = await Promise.all([this._uploadPatch($defer, p.uuid, xsCredentials), this._ejectToolsIsos()])
       if (vdi === undefined) {
         throw new Error('patch could not be uploaded')
       }
 
+      const updateRef = await this.call('pool_update.introduce', vdi.$ref)
+
+      // Checks for license restrictions (and other conditions?)
+      await Promise.all(
+        filter(this.objects.all, { $type: 'host' }).map(host => this.call('pool_update.precheck', updateRef, host.$ref))
+      )
+
       log.debug(`installing patch ${p.uuid}`)
-      await this.call('pool_update.pool_apply', await this.call('pool_update.introduce', vdi.$ref))
+      await this.call('pool_update.pool_apply', updateRef)
     }
-  }),
+  },
 
   async _hostInstall(patches, host) {
     throw new Error('single host install not implemented')
@@ -449,7 +458,7 @@ export default {
   //
   // XS pool-wide optimization only works when no hosts are specified
   // it may install more patches that specified if some of them require other patches
-  async installPatches({ patches, hosts } = {}) {
+  async installPatches({ patches, hosts, xsCredentials } = {}) {
     // XCP
     if (_isXcp(this.pool.$master)) {
       return this._xcpUpdate(hosts)
@@ -467,7 +476,7 @@ export default {
         installablePatches.map(patch => patch.uuid)
       )
 
-      return this._poolWideInstall(installablePatches)
+      return this._poolWideInstall(installablePatches, xsCredentials)
     }
 
     // for each host
@@ -478,157 +487,49 @@ export default {
     throw new Error('non pool-wide install not implemented')
   },
 
-  @decorateWith(deferrable)
-  async rollingPoolUpdate($defer) {
+  async rollingPoolUpdate($defer, { xsCredentials } = {}) {
     const isXcp = _isXcp(this.pool.$master)
 
-    if (this.pool.ha_enabled) {
-      const haSrs = this.pool.$ha_statefiles.map(vdi => vdi.SR)
-      const haConfig = this.pool.ha_configuration
-      await this.call('pool.disable_ha')
-      $defer(() => this.call('pool.enable_ha', haSrs, haConfig))
-    }
-
-    const hosts = filter(this.objects.all, { $type: 'host' })
-
-    {
-      const deadHost = hosts.find(_ => !isHostRunning(_))
-      if (deadHost !== undefined) {
-        // reflect the interface of an XO host object
-        throw incorrectState({
-          actual: 'Halted',
-          expected: 'Running',
-          object: deadHost.$id,
-          property: 'power_state',
-        })
-      }
-    }
-
-    await Promise.all(hosts.map(host => host.$call('assert_can_evacuate')))
-
     const hasMissingPatchesByHost = {}
+    const hosts = filter(this.objects.all, { $type: 'host' })
     await asyncEach(hosts, async host => {
       const hostUuid = host.uuid
       const missingPatches = await this.listMissingPatches(hostUuid)
       hasMissingPatchesByHost[hostUuid] = missingPatches.length > 0
     })
 
-    // On XS/CH, start by installing patches on all hosts
-    if (!isXcp) {
-      log.debug('Install patches')
-      await this.installPatches()
-    }
-
-    // Remember on which hosts the running VMs are
-    const vmsByHost = mapValues(
-      groupBy(
-        filter(this.objects.all, {
-          $type: 'VM',
-          power_state: 'Running',
-          is_control_domain: false,
-        }),
-        vm => {
-          const hostId = vm.$resident_on?.$id
-
-          if (hostId === undefined) {
-            throw new Error('Could not find host of all running VMs')
-          }
-
-          return hostId
+    await this.rollingPoolReboot({
+      xsCredentials,
+      beforeEvacuateVms: async () => {
+        // On XS/CH, start by installing patches on all hosts
+        if (!isXcp) {
+          log.debug('Install patches')
+          await this.installPatches({ xsCredentials })
         }
-      ),
-      vms => vms.map(vm => vm.$id)
-    )
-
-    // Put master in first position to restart it first
-    const indexOfMaster = hosts.findIndex(host => host.$ref === this.pool.master)
-    if (indexOfMaster === -1) {
-      throw new Error('Could not find pool master')
-    }
-    ;[hosts[0], hosts[indexOfMaster]] = [hosts[indexOfMaster], hosts[0]]
-
-    // Restart all the hosts one by one
-    for (const host of hosts) {
-      const hostId = host.uuid
-      if (!hasMissingPatchesByHost[hostId]) {
-        continue
-      }
-
-      // This is an old metrics reference from before the pool master restart.
-      // The references don't seem to change but it's not guaranteed.
-      const metricsRef = host.metrics
-
-      await this.barrier(metricsRef)
-      await this._waitObjectState(metricsRef, metrics => metrics.live)
-
-      const getServerTime = async () => parseDateTime(await this.call('host.get_servertime', host.$ref)) * 1e3
-      let rebootTime
-      if (isXcp) {
-        // On XCP-ng, install patches on each host one by one instead of all at once
-        log.debug(`Evacuate host ${hostId}`)
-        await this.clearHost(host)
-        log.debug(`Install patches on host ${hostId}`)
-        await this.installPatches({ hosts: [host] })
-        log.debug(`Restart host ${hostId}`)
-        rebootTime = await getServerTime()
-        await this.callAsync('host.reboot', host.$ref)
-      } else {
-        // On XS/CH, we only need to evacuate/restart the hosts one by one since patches have already been installed
-        log.debug(`Evacuate and restart host ${hostId}`)
-        rebootTime = await getServerTime()
-        await this.rebootHost(hostId)
-      }
-
-      log.debug(`Wait for host ${hostId} to be up`)
-      await timeout.call(
-        (async () => {
-          await this._waitObjectState(
-            hostId,
-            host => host.enabled && rebootTime < host.other_config.agent_start_time * 1e3
-          )
-          await this._waitObjectState(metricsRef, metrics => metrics.live)
-        })(),
-        this._restartHostTimeout,
-        new Error(`Host ${hostId} took too long to restart`)
-      )
-      log.debug(`Host ${hostId} is up`)
-    }
-
-    if (some(hasMissingPatchesByHost)) {
-      log.debug('Migrate VMs back to where they were')
-    }
-
-    // Start with the last host since it's the emptiest one after the rolling
-    // update
-    ;[hosts[0], hosts[hosts.length - 1]] = [hosts[hosts.length - 1], hosts[0]]
-
-    let error
-    for (const host of hosts) {
-      const hostId = host.uuid
-      if (!hasMissingPatchesByHost[hostId]) {
-        continue
-      }
-
-      const vmIds = vmsByHost[hostId]
-
-      if (vmIds === undefined) {
-        continue
-      }
-
-      for (const vmId of vmIds) {
-        try {
-          await this.migrateVm(vmId, this, hostId)
-        } catch (err) {
-          log.error(err)
-          if (error === undefined) {
-            error = err
-          }
+      },
+      beforeRebootHost: async host => {
+        if (isXcp) {
+          log.debug(`Install patches on host ${host.id}`)
+          await this.installPatches({ hosts: [host] })
         }
-      }
-    }
-
-    if (error !== undefined) {
-      throw error
-    }
+      },
+      ignoreHost: host => {
+        return !hasMissingPatchesByHost[host.uuid]
+      },
+    })
   },
 }
+
+export default decorateObject(methods, {
+  _getXenUpdates: [
+    debounceWithKey,
+    24 * 60 * 60 * 1000,
+    function () {
+      return this
+    },
+  ],
+
+  _poolWideInstall: deferrable,
+
+  rollingPoolUpdate: deferrable,
+})

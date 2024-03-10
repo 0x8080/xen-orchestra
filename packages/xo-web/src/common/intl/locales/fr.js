@@ -1596,9 +1596,6 @@ export default {
   // Original text: "Invalid parameters"
   configIpErrorTitle: 'Paramètres invalides',
 
-  // Original text: "IP address and netmask required"
-  configIpErrorMessage: 'Adresse IP et masque de réseau requis',
-
   // Original text: "Static IP address"
   staticIp: 'Adresse IP statique',
 
@@ -3260,12 +3257,6 @@ export default {
 
   // Original text: "Xen Orchestra"
   xenOrchestra: 'Xen Orchestra',
-
-  // Original text: "Xen Orchestra server"
-  xenOrchestraServer: 'Serveur Xen Orchestra',
-
-  // Original text: "Xen Orchestra web client"
-  xenOrchestraWeb: 'Client web Xen Orchestra',
 
   // Original text: "No pro support provided!"
   noProSupport: 'Pas de support professionel fourni !',

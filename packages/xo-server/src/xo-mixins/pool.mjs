@@ -62,11 +62,14 @@ export default class Pools {
       }
       const patchesName = await Promise.all([targetXapi.findPatches(targetRequiredPatches), ...findPatchesPromises])
 
+      const { xsCredentials } = _app.apiContext.user.preferences
+
       // Install patches in parallel.
       const installPatchesPromises = []
       installPatchesPromises.push(
         targetXapi.installPatches({
           patches: patchesName[0],
+          xsCredentials,
         })
       )
       let i = 1
@@ -74,6 +77,7 @@ export default class Pools {
         installPatchesPromises.push(
           sourceXapis[sourceId].installPatches({
             patches: patchesName[i++],
+            xsCredentials,
           })
         )
       }
@@ -129,5 +133,11 @@ export default class Pools {
         ) &&
         srsByPool[pool.id].some(sr => sr.size - sr.physical_usage >= minAvailableSrSize && checkSrName(sr.name_label))
     )
+  }
+
+  async rollingPoolReboot(pool) {
+    const { _app } = this
+    await _app.checkFeatureAuthorization('ROLLING_POOL_REBOOT')
+    await _app.getXapi(pool).rollingPoolReboot()
   }
 }

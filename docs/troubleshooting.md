@@ -14,7 +14,7 @@ It means you don't have a default SR set on the pool you are importing XOA on. T
 
 ## Unreachable after boot
 
-XOA uses HVM mode. If your physical host doesn't support virtualization extensions, XOA won't work. To check if your XenServer supports hardware assisted virtualization (HVM), you can enter this command in your host: `grep --color vmx /proc/cpuinfo`. If you don't have any result, it means XOA won't work on this hardware.
+XOA uses HVM mode. If your physical host doesn't support virtualization extensions, XOA won't work. To check if your XCP-ng/XenServer supports hardware assisted virtualization (HVM), you can enter this command in your host: `grep --color vmx /proc/cpuinfo`. If you don't have any result, it means XOA won't work on this hardware.
 
 ## Set or recover XOA VM password
 
@@ -32,7 +32,9 @@ Then you need to restart the VM.
 
 If you have lost your password to log in to the XOA webpage, you can reset it. From the XOA CLI (for login/access info for the CLI, [see here](xoa.md#first-console-connection)), use the following command and insert the email/account you wish to recover:
 
-`xo-server-recover-account youremail@here.com`
+```sh
+sudo xo-server-recover-account youremail@here.com
+```
 
 It will prompt you to set a new password. If you provide an email here that does not exist in XOA yet, it will create a new account using it, with admin permissions - you can use that new account to log in as well.
 
@@ -107,7 +109,7 @@ If you have something completely different than that, or error messages, lost pa
 
 ### Network issues
 
-You can see your current network configuration by running `ifconfig eth0`. If you have an external firewall, please check that you allow the XOA's IP.
+You can see your current network configuration by running `ifconfig` (default interface is called `enX0` or `eth0`). If you have an external firewall, please check that you allow the XOA's IP.
 
 You can modify the IP configuration with `xoa network static` (for a static IP address) or `xoa network dhcp` to use DHCP.
 
@@ -195,7 +197,7 @@ If you have ghost tasks accumulating in your Xen Orchestra you can try the follo
 
 1. refresh the web page
 1. disconnect and reconnect the Xen pool/server owning the tasks
-1. restart the XenAPI Toolstack of the XenServer master
+1. restart the XenAPI Toolstack of the XCP-ng/XenServer master
 1. restart xo-server
 
 ### Redownload and rebuild

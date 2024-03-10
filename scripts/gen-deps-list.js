@@ -123,6 +123,10 @@ async function readPackagesFromChangelog(toRelease) {
     }
 
     const { name, releaseType } = match.groups
+    if (name in toRelease) {
+      throw new Error('duplicate package to release in CHANGELOG.unreleased.md: ' + name)
+    }
+
     toRelease[name] = releaseType
   })
 }
@@ -211,8 +215,8 @@ function versionToReleaseWeight(version) {
   return semver.major(version) > 0
     ? RELEASE_WEIGHT.MAJOR
     : semver.minor(version) > 0
-    ? RELEASE_WEIGHT.MINOR
-    : RELEASE_WEIGHT.PATCH
+      ? RELEASE_WEIGHT.MINOR
+      : RELEASE_WEIGHT.PATCH
 }
 
 /**

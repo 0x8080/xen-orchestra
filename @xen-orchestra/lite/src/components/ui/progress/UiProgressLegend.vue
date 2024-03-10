@@ -15,21 +15,19 @@
 </template>
 
 <script lang="ts" setup>
-import UiBadge from "@/components/ui/UiBadge.vue";
-import { vTooltip } from "@/directives/tooltip.directive";
-import { hasEllipsis } from "@/libs/utils";
-import { computed, ref } from "vue";
+import UiBadge from '@/components/ui/UiBadge.vue'
+import { vTooltip } from '@/directives/tooltip.directive'
+import { hasEllipsis } from '@/libs/utils'
+import { computed, ref } from 'vue'
 
 defineProps<{
-  label?: string;
-  value?: string;
-}>();
+  label?: string
+  value?: string
+}>()
 
-const labelElement = ref<HTMLElement>();
+const labelElement = ref<HTMLElement>()
 
-const isTooltipEnabled = computed(() =>
-  hasEllipsis(labelElement.value, { vertical: true })
-);
+const isTooltipEnabled = computed(() => hasEllipsis(labelElement.value, { vertical: true }))
 </script>
 
 <style lang="postcss" scoped>
@@ -51,7 +49,6 @@ const isTooltipEnabled = computed(() =>
   align-items: center;
   justify-content: flex-end;
   gap: 0.5rem;
-  margin: 1.6em 0;
 }
 
 .label-container {

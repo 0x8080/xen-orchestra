@@ -32,7 +32,7 @@ import {
   getXoaState,
   isAdmin,
 } from 'selectors'
-import { every, forEach, identity, isEmpty, isEqual, map, pick, size, some } from 'lodash'
+import { countBy, every, forEach, identity, isEmpty, isEqual, map, pick, size, some } from 'lodash'
 
 import styles from './index.css'
 
@@ -111,7 +111,10 @@ export default class Menu extends Component {
     () => this.state.proxyStates,
     proxyStates => some(proxyStates, state => state.endsWith('-upgrade-needed'))
   )
-
+  _getNProxiesErrors = createSelector(
+    () => this.state.proxyStates,
+    proxyStates => countBy(proxyStates).error
+  )
   _checkPermissions = createSelector(
     () => this.props.isAdmin,
     () => this.props.permissions,
@@ -213,6 +216,7 @@ export default class Menu extends Component {
     const noOperatablePools = this._getNoOperatablePools()
     const noResourceSets = this._getNoResourceSets()
     const noNotifications = this._getNoNotifications()
+    const nProxiesErrors = this._getNProxiesErrors()
 
     const missingPatchesWarning = this._hasMissingPatches() ? (
       <Tooltip content={_('homeMissingPatches')}>
@@ -468,6 +472,10 @@ export default class Menu extends Component {
                 ]}
               />
             </Tooltip>
+          ) : nProxiesErrors > 0 ? (
+            <Tooltip content={_('someProxiesHaveErrors', { n: nProxiesErrors })}>
+              <span className='tag tag-pill tag-danger'>{nProxiesErrors}</span>
+            </Tooltip>
           ) : null,
         ],
       },
@@ -478,7 +486,11 @@ export default class Menu extends Component {
         label: 'taskMenu',
         pill: nResolvedTasks,
       },
-      isAdmin && { to: '/xosan', icon: 'menu-xosan', label: 'xosan' },
+      isAdmin && {
+        to: '/xostor',
+        label: 'xostor',
+        icon: 'menu-xostor',
+      },
       !noOperatablePools && {
         to: '/import/vm',
         icon: 'menu-new-import',

@@ -4,6 +4,7 @@ import { Disposable } from 'promise-toolbox'
 import { getVmBackupDir } from '../../_getVmBackupDir.mjs'
 
 import { Abstract } from './_Abstract.mjs'
+import { extractIdsFromSimplePattern } from '../../extractIdsFromSimplePattern.mjs'
 
 export const AbstractRemote = class AbstractRemoteVmBackupRunner extends Abstract {
   constructor({
@@ -21,6 +22,7 @@ export const AbstractRemote = class AbstractRemoteVmBackupRunner extends Abstrac
     this.config = config
     this.job = job
     this.remoteAdapters = remoteAdapters
+    this._settings = settings
     this.scheduleId = schedule.id
     this.timestamp = undefined
 
@@ -34,7 +36,8 @@ export const AbstractRemote = class AbstractRemoteVmBackupRunner extends Abstrac
     this._writers = writers
 
     const RemoteWriter = this._getRemoteWriter()
-    Object.entries(remoteAdapters).forEach(([remoteId, adapter]) => {
+    extractIdsFromSimplePattern(job.remotes).forEach(remoteId => {
+      const adapter = remoteAdapters[remoteId]
       const targetSettings = {
         ...settings,
         ...allSettings[remoteId],

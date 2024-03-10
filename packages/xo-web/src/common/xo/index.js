@@ -16,6 +16,8 @@ import {
   incorrectState,
   noHostsAvailable,
   operationBlocked,
+  operationFailed,
+  vmBadPowerState,
   vmLacksFeature,
 } from 'xo-common/api-errors'
 
@@ -27,12 +29,12 @@ import Icon from '../icon'
 import logError from '../log-error'
 import NewAuthTokenModal from './new-auth-token-modal'
 import RegisterProxyModal from './register-proxy-modal'
-import renderXoItem, { renderXoItemFromId, Vm } from '../render-xo-item'
+import renderXoItem, { Host, renderXoItemFromId, Vm } from '../render-xo-item'
 import store from 'store'
 import WarmMigrationModal from './warm-migration-modal'
 import { alert, chooseAction, confirm } from '../modal'
 import { error, info, success } from '../notification'
-import { getObject } from 'selectors'
+import { getObject, isAdmin } from 'selectors'
 import { getXoaPlan, SOURCES } from '../xoa-plans'
 import { noop, resolveId, resolveIds } from '../utils'
 import {
@@ -46,6 +48,7 @@ import {
 } from '../store/actions'
 
 import parseNdJson from './_parseNdJson'
+import RollingPoolRebootModal from './rolling-pool-reboot-modal'
 
 // ===================================================================
 
@@ -71,6 +74,7 @@ export const XEN_VIDEORAM_VALUES = [1, 2, 4, 8, 16]
 
 // ===================================================================
 
+export const isSrIso = sr => sr && sr.content_type === 'iso' && sr.size > 0
 export const isSrWritable = sr => sr && sr.content_type !== 'iso' && sr.size > 0
 export const isSrWritableOrIso = sr => sr && sr.size > 0
 export const isSrShared = sr => sr && sr.shared
@@ -108,7 +112,13 @@ const xo = invoke(() => {
     credentials: { token },
   })
 
-  xo.on('authenticationFailure', signOut)
+  xo.on('authenticationFailure', error => {
+    console.warn('authenticationFailure', error)
+
+    if (error.name !== 'ConnectionError') {
+      signOut(error)
+    }
+  })
   xo.on('scheduledAttempt', ({ delay }) => {
     console.warn('next attempt in %s ms', delay)
   })
@@ -352,7 +362,11 @@ export const subscribeRemotes = createSubscription(() => _call('remote.getAll'))
 
 export const subscribeRemotesInfo = createSubscription(() => _call('remote.getAllInfo'))
 
-export const subscribeProxies = createSubscription(() => _call('proxy.getAll'))
+export const subscribeProxies = createSubscription(() => {
+  const _isAdmin = isAdmin(store.getState())
+
+  return _isAdmin ? _call('proxy.getAll') : undefined
+})
 
 export const subscribeResourceSets = createSubscription(() => _call('resourceSet.getAll'))
 
@@ -361,6 +375,8 @@ export const subscribeSchedules = createSubscription(() => _call('schedule.getAl
 export const subscribeServers = createSubscription(
   invoke(fpSortBy('host'), sort => () => _call('server.getAll').then(sort))
 )
+
+export const subscribeConfiguredTags = createSubscription(() => _call('tag.getAllConfigured'))
 
 export const subscribeUsers = createSubscription(() =>
   _call('user.getAll').then(users => {
@@ -505,7 +521,14 @@ subscribeHostMissingPatches.forceRefresh = host => {
 const proxiesApplianceUpdaterState = {}
 export const subscribeProxiesApplianceUpdaterState = (proxyId, cb) => {
   if (proxiesApplianceUpdaterState[proxyId] === undefined) {
-    proxiesApplianceUpdaterState[proxyId] = createSubscription(() => getProxyApplianceUpdaterState(proxyId))
+    proxiesApplianceUpdaterState[proxyId] = createSubscription(async () => {
+      try {
+        return await getProxyApplianceUpdaterState(proxyId)
+      } catch (error) {
+        console.error(error)
+        return { state: 'error' }
+      }
+    })
   }
   return proxiesApplianceUpdaterState[proxyId](cb)
 }
@@ -549,7 +572,11 @@ subscribeVolumeInfo.forceRefresh = (() => {
   }
 })()
 
-export const subscribeSrsUnhealthyVdiChainsLength = createSubscription(() => _call('sr.getAllUnhealthyVdiChainsLength'))
+export const subscribeSrsUnhealthyVdiChainsLength = createSubscription(() => {
+  const _isAdmin = isAdmin(store.getState())
+
+  return _isAdmin ? _call('sr.getAllUnhealthyVdiChainsLength') : undefined
+})
 
 const unhealthyVdiChainsLengthSubscriptionsBySr = {}
 export const createSrUnhealthyVdiChainsLengthSubscription = sr => {
@@ -791,6 +818,32 @@ export const setPoolMaster = host =>
     }),
   }).then(() => _call('pool.setPoolMaster', { host: resolveId(host) }), noop)
 
+export const rollingPoolReboot = async pool => {
+  const poolId = resolveId(pool)
+  await confirm({
+    body: <RollingPoolRebootModal pool={poolId} />,
+    title: _('rollingPoolReboot'),
+    icon: 'pool-rolling-reboot',
+  })
+  try {
+    return await _call('pool.rollingReboot', { pool: poolId })
+  } catch (error) {
+    if (!forbiddenOperation.is(error)) {
+      throw error
+    }
+    await confirm({
+      body: (
+        <p className='text-warning'>
+          <Icon icon='alarm' /> {_('bypassBackupPoolModalMessage')}
+        </p>
+      ),
+      title: _('rollingPoolReboot'),
+      icon: 'pool-rolling-reboot',
+    })
+    return _call('pool.rollingReboot', { pool: poolId, bypassBackupCheck: true })
+  }
+}
+
 // Host --------------------------------------------------------------
 
 export const setSchedulerGranularity = (host, schedulerGranularity) =>
@@ -821,42 +874,113 @@ export const setRemoteSyslogHost = (host, syslogDestination) =>
 export const setRemoteSyslogHosts = (hosts, syslogDestination) =>
   Promise.all(map(hosts, host => setRemoteSyslogHost(host, syslogDestination)))
 
-export const restartHost = (host, force = false, suspendResidentVms = false) =>
-  confirm({
+export const restartHost = async (
+  host,
+  force = false,
+  suspendResidentVms = false,
+  bypassBlockedSuspend = false,
+  bypassCurrentVmCheck = false
+) => {
+  await confirm({
     title: _('restartHostModalTitle'),
     body: _('restartHostModalMessage'),
-  }).then(
-    () =>
-      _call('host.restart', { id: resolveId(host), force, suspendResidentVms })
-        .catch(async error => {
-          if (
-            forbiddenOperation.is(error, {
-              reason: `A backup may run on the pool: ${host.$poolId}`,
-            }) ||
-            forbiddenOperation.is(error, {
-              reason: `A backup is running on the pool: ${host.$poolId}`,
-            })
-          ) {
-            await confirm({
-              body: (
-                <p className='text-warning'>
-                  <Icon icon='alarm' /> {_('bypassBackupHostModalMessage')}
-                </p>
-              ),
-              title: _('restartHostModalTitle'),
-            })
-            return _call('host.restart', { id: resolveId(host), force, suspendResidentVms, bypassBackupCheck: true })
-          }
-          throw error
-        })
-        .catch(error => {
-          if (noHostsAvailable.is(error)) {
-            alert(_('noHostsAvailableErrorTitle'), _('noHostsAvailableErrorMessage'))
-          }
-          throw error
-        }),
-    noop
-  )
+  })
+  return _restartHost({ host, force, suspendResidentVms, bypassBlockedSuspend, bypassCurrentVmCheck })
+}
+
+const _restartHost = async ({ host, ...opts }) => {
+  opts = { ...opts, id: resolveId(host) }
+
+  try {
+    await _call('host.restart', opts)
+  } catch (error) {
+    if (cantSuspend(error)) {
+      await confirm({
+        body: (
+          <p>
+            <Icon icon='alarm' /> {_('forceSmartRebootHost', { nVms: error.data.actual.length })}
+          </p>
+        ),
+        title: _('restartHostModalTitle'),
+      })
+      return _restartHost({ ...opts, host, bypassBlockedSuspend: true })
+    }
+
+    if (xoaOnHost(error)) {
+      await confirm({
+        body: (
+          <p>
+            <Icon icon='alarm' /> {_('smartRebootBypassCurrentVmCheck')}
+          </p>
+        ),
+        title: _('restartHostModalTitle'),
+      })
+      return _restartHost({ ...opts, host, bypassCurrentVmCheck: true })
+    }
+
+    if (backupIsRunning(error, host.$poolId)) {
+      await confirm({
+        body: (
+          <p className='text-warning'>
+            <Icon icon='alarm' /> {_('bypassBackupHostModalMessage')}
+          </p>
+        ),
+        title: _('restartHostModalTitle'),
+      })
+      return _restartHost({ ...opts, host, bypassBackupCheck: true })
+    }
+
+    if (masterNeedsUpdate(error)) {
+      const state = store.getState()
+      const master = getObject(state, getObject(state, host.$pool).master)
+      await chooseAction({
+        body: (
+          <p>
+            <Icon icon='alarm' />{' '}
+            {_('slaveHostMoreUpToDateThanMasterAfterRestart', { master: <Host id={master.id} link /> })}
+          </p>
+        ),
+        buttons: [{ label: _('restartAnyway'), btnStyle: 'danger' }],
+        icon: 'alarm',
+        title: _('restartHostModalTitle'),
+      })
+
+      return _restartHost({ ...opts, host, bypassVersionCheck: true })
+    }
+
+    if (noHostsAvailableErrCheck(error)) {
+      alert(_('noHostsAvailableErrorTitle'), _('noHostsAvailableErrorMessage'))
+    }
+    throw error
+  }
+}
+
+// ---- Restart Host errors
+const cantSuspend = err =>
+  err !== undefined &&
+  incorrectState.is(err, {
+    object: 'suspendBlocked',
+  })
+const xoaOnHost = err =>
+  err !== undefined &&
+  operationFailed.is(err, {
+    code: 'xoaOnHost',
+  })
+const backupIsRunning = (err, poolId) =>
+  err !== undefined &&
+  (forbiddenOperation.is(err, {
+    reason: `A backup may run on the pool: ${poolId}`,
+  }) ||
+    forbiddenOperation.is(err, {
+      reason: `A backup is running on the pool: ${poolId}`,
+    }))
+const masterNeedsUpdate = err =>
+  err !== undefined &&
+  incorrectState.is(err, {
+    property: 'rebootRequired',
+  })
+
+const noHostsAvailableErrCheck = err => err !== undefined && noHostsAvailable.is(err)
 
 export const restartHosts = (hosts, force = false) => {
   const nHosts = size(hosts)
@@ -1023,6 +1147,11 @@ export const isHyperThreadingEnabledHost = host =>
   _call('host.isHyperThreadingEnabled', {
     id: resolveId(host),
   })
+
+export const getSmartctlHealth = host => _call('host.getSmartctlHealth', { id: resolveId(host) })
+
+export const getSmartctlInformation = (host, deviceNames) =>
+  _call('host.getSmartctlInformation', { id: resolveId(host), deviceNames })
 
 export const installCertificateOnHost = (id, props) => _call('host.installCertificate', { id, ...props })
 
@@ -1423,6 +1552,18 @@ export const changeVirtualizationMode = vm =>
     })
   )
 
+import EditVmNotesModalBody from './edit-vm-notes-modal' // eslint-disable-line import/first
+export const editVmNotes = async vm => {
+  const { notes } = await confirm({
+    icon: 'edit',
+    title: _('editVmNotes'),
+    body: <EditVmNotesModalBody vm={vm} />,
+  })
+
+  // Remove notes if `''` is passed
+  await _call('vm.set', { id: resolveId(vm), notes: notes || null })
+}
+
 export const createKubernetesCluster = params => _call('xoa.recipe.createKubernetesCluster', params)
 
 export const deleteTemplates = templates =>
@@ -1548,17 +1689,16 @@ export const migrateVm = async (vm, host) => {
     return
   }
 
-  const { migrationNetwork, sr, targetHost } = params
+  const { sr, srRequired, targetHost } = params
 
   if (!targetHost) {
     return error(_('migrateVmNoTargetHost'), _('migrateVmNoTargetHostMessage'))
   }
 
-  // Workaround to prevent VM's VDIs from unexpectedly migrating to the default SR
-  // if migration network is defined, the SR is required.
-  if (migrationNetwork !== undefined && sr === undefined) {
+  if (srRequired && sr === undefined) {
     return error(_('migrateVmNoSr'), _('migrateVmNoSrMessage'))
   }
+  delete params.srRequired
 
   try {
     await _call('vm.migrate', { vm: vm.id, ...params })
@@ -1593,6 +1733,11 @@ export const migrateVms = vms =>
       return error(_('migrateVmNoTargetHost'), _('migrateVmNoTargetHostMessage'))
     }
 
+    if (params.srRequired && params.sr === undefined) {
+      return error(_('migrateVmNoTargetHost'), _('migrateVmNoTargetHostMessage'))
+    }
+    delete params.srRequired
+
     const { mapVmsMapVdisSrs, mapVmsMapVifsNetworks, migrationNetwork, sr, targetHost, vms } = params
     Promise.all(
       map(vms, ({ id }) =>
@@ -1608,14 +1753,22 @@ export const migrateVms = vms =>
     )
   }, noop)
 
-export const createVm = args => _call('vm.create', args)
+export const createVm = async args => {
+  try {
+    return await _call('vm.create', args)
+  } catch (err) {
+    handlePoolDoesNotSupportVtpmError(err)
+    throw error
+  }
+}
 
-export const createVms = (args, nameLabels, cloudConfigs) =>
-  confirm({
+export const createVms = async (args, nameLabels, cloudConfigs) => {
+  await confirm({
     title: _('newVmCreateVms'),
     body: _('newVmCreateVmsConfirm', { nbVms: nameLabels.length }),
-  }).then(() =>
-    Promise.all(
+  })
+  try {
+    return await Promise.all(
       map(
         nameLabels,
         (
@@ -1629,7 +1782,11 @@ export const createVms = (args, nameLabels, cloudConfigs) =>
           })
       )
     )
-  )
+  } catch (error) {
+    handlePoolDoesNotSupportVtpmError(error)
+    throw error
+  }
+}
 
 export const getCloudInitConfig = template => _call('vm.getCloudInitConfig', { template })
 
@@ -1734,8 +1891,28 @@ export const editVm = async (vm, props) => {
     }
   }
   await _call('vm.set', { ...props, id: resolveId(vm) })
-    .catch(err => {
-      error(_('setVmFailed', { vm: renderXoItemFromId(resolveId(vm)) }), err.message)
+    .catch(async err => {
+      if (vmBadPowerState.is(err, { actual: 'running' }) || err.message === 'Cannot change memory on running VM') {
+        try {
+          const force = await chooseAction({
+            body: <p>{_('vmEditAndRestartModalMessage')}</p>,
+            buttons: [
+              { label: _('rebootVmLabel'), value: false, btnStyle: 'success' },
+              { label: _('forceRebootVmLabel'), value: true, btnStyle: 'danger' },
+            ],
+            icon: 'vm-reboot',
+            title: _('vmEditAndRestartModalTitle'),
+          })
+          await _call('vm.setAndRestart', { ...props, id: resolveId(vm), force })
+        } catch (err) {
+          if (err !== undefined) {
+            error(_('setAndRestartVmFailed', { vm: renderXoItemFromId(resolveId(vm)) }), err.message)
+            throw err
+          }
+        }
+      } else {
+        error(_('setVmFailed', { vm: renderXoItemFromId(resolveId(vm)) }), err.message)
+      }
     })
     ::tap(subscribeResourceSets.forceRefresh)
 }
@@ -1868,6 +2045,8 @@ export const importDisks = (disks, sr) =>
       })
     )
   )
+
+export const getBlockdevices = host => _call('host.getBlockdevices', { id: resolveId(host) })
 
 import ExportVmModalBody from './export-vm-modal' // eslint-disable-line import/first
 export const exportVm = async vm => {
@@ -2096,6 +2275,37 @@ export const deleteAclRule = ({ protocol = undefined, port = undefined, ipRange 
     vifId: resolveId(vif),
   })
 
+// VTPM -----------------------------------------------------------
+const handlePoolDoesNotSupportVtpmError = err => {
+  if (
+    incorrectState.is(err, {
+      property: 'restrictions.restrict_vtpm',
+      expected: 'false',
+    })
+  ) {
+    console.error(err)
+    throw new Error('This pool does not support VTPM')
+  }
+}
+
+export const createVtpm = async vm => {
+  try {
+    return await _call('vtpm.create', { id: resolveId(vm) })
+  } catch (err) {
+    handlePoolDoesNotSupportVtpmError(err)
+    throw err
+  }
+}
+export const deleteVtpm = vtpm => _call('vtpm.destroy', { id: resolveId(vtpm) })
+
+export const editPusb = (pusb, props) => _call('pusb.set', { id: resolveId(pusb), ...props })
+
+export const createVusb = (vm, usbGroup) => _call('vusb.create', { vm: resolveId(vm), usbGroup: resolveId(usbGroup) })
+
+export const unplugVusb = vusb => _call('vusb.unplug', { id: resolveId(vusb) })
+
+export const deleteVusb = vusb => _call('vusb.destroy', { id: resolveId(vusb) })
+
 // Network -----------------------------------------------------------
 
 export const editNetwork = (network, props) => _call('network.set', { ...props, id: resolveId(network) })
@@ -2141,17 +2351,21 @@ export const deletePifs = pifs =>
     body: _('deletePifsConfirm', { nPifs: pifs.length }),
   }).then(() => Promise.all(map(pifs, pif => _call('pif.delete', { pif: resolveId(pif) }))), noop)
 
-export const reconfigurePifIp = (pif, { mode, ip, netmask, gateway, dns }) =>
+export const reconfigurePifIp = (pif, { mode, ip, ipv6, ipv6Mode, netmask, gateway, dns }) =>
   _call('pif.reconfigureIp', {
     pif: resolveId(pif),
     mode,
     ip,
+    ipv6,
+    ipv6Mode,
     netmask,
     gateway,
     dns,
   })
 
 export const getIpv4ConfigModes = () => _call('pif.getIpv4ConfigurationModes')
+
+export const getIpv6ConfigModes = () => _call('pif.getIpv6ConfigurationModes')
 
 export const editPif = (pif, { vlan }) => _call('pif.editPif', { pif: resolveId(pif), vlan })
 
@@ -2172,15 +2386,20 @@ export const deleteSr = sr =>
 
 export const fetchSrStats = (sr, granularity) => _call('sr.stats', { id: resolveId(sr), granularity })
 
-export const forgetSr = sr =>
-  confirm({
-    title: _('srForgetModalTitle'),
-    body: _('srForgetModalMessage'),
-  }).then(() => _call('sr.forget', { id: resolveId(sr) }), noop)
+export const forgetSr = sr => forgetSrs([sr])
+
 export const forgetSrs = srs =>
   confirm({
-    title: _('srsForgetModalTitle'),
-    body: _('srsForgetModalMessage'),
+    title: _('nSrsForget', { nSrs: srs.length }),
+    body: (
+      <p className='text-warning font-weight-bold'>
+        {_('forgetNSrsModalMessage', { nSrs: srs.length })} {_('srForgetModalWarning')}
+      </p>
+    ),
+    strongConfirm: {
+      messageId: 'nSrsForget',
+      values: { nSrs: srs.length },
+    },
   }).then(() => Promise.all(map(resolveIds(srs), id => _call('sr.forget', { id }))), noop)
 
 export const reconnectAllHostsSr = sr =>
@@ -2250,6 +2469,24 @@ export const toggleSrMaintenanceMode = sr => {
   })
 }
 
+export const reclaimSrSpace = async sr => {
+  await confirm({
+    icon: 'sr-reclaim-space',
+    title: _('srReclaimSpace'),
+    body: _('srReclaimSpaceConfirm'),
+  })
+
+  try {
+    await _call('sr.reclaimSpace', { id: resolveId(sr) })
+    success(_('srReclaimSpace'))
+  } catch (err) {
+    if (err?.data?.message?.includes('Operation not supported')) {
+      throw new Error('Space reclaim not supported. Only supported on block based/LVM based SRs.')
+    }
+    throw err
+  }
+}
+
 // PBDs --------------------------------------------------------------
 
 export const connectPbd = pbd => _call('pbd.connect', { id: resolveId(pbd) })
@@ -2273,6 +2510,8 @@ export const deleteMessages = logs =>
 // Tags --------------------------------------------------------------
 
 export const addTag = (object, tag) => _call('tag.add', { id: resolveId(object), tag })
+
+export const setTag = (id, params) => _call('tag.set', { id, ...params })::tap(subscribeConfiguredTags.forceRefresh)
 
 export const removeTag = (object, tag) => _call('tag.remove', { id: resolveId(object), tag })
 
@@ -2470,11 +2709,11 @@ export const listVmBackups = remotes => _call('backupNg.listVmBackups', { remote
 export const restoreBackup = (
   backup,
   sr,
-  { generateNewMacAddresses = false, mapVdisSrs = {}, startOnRestore = false } = {}
+  { generateNewMacAddresses = false, mapVdisSrs = {}, startOnRestore = false, useDifferentialRestore = false } = {}
 ) => {
   const promise = _call('backupNg.importVmBackup', {
     id: resolveId(backup),
-    settings: { mapVdisSrs: resolveIds(mapVdisSrs), newMacAddresses: generateNewMacAddresses },
+    settings: { mapVdisSrs: resolveIds(mapVdisSrs), newMacAddresses: generateNewMacAddresses, useDifferentialRestore },
     sr: resolveId(sr),
   })
 
@@ -2750,6 +2989,14 @@ export const createSrNfs = (
   nfsOptions && (params.nfsOptions = nfsOptions)
   srUuid && (params.srUuid = srUuid)
   return _call('sr.createNfs', params)
+}
+
+export const createSrSmb = (host, nameLabel, nameDescription, server, user, password, srUuid) => {
+  const params = { host, nameLabel, nameDescription, server, user, password }
+  if (srUuid !== undefined) {
+    params.srUuid = srUuid
+  }
+  return _call('sr.createSmb', params)
 }
 
 export const createSrIscsi = (
@@ -3131,6 +3378,11 @@ export const editAuthToken = ({ description, id }) =>
     id,
   })::tap(subscribeUserAuthTokens.forceRefresh)
 
+export const editXsCredentials = xsCredentials =>
+  _setUserPreferences({
+    xsCredentials,
+  })
+
 // User filters --------------------------------------------------
 
 import AddUserFilterModalBody from './add-user-filter-modal' // eslint-disable-line import/first
@@ -3368,6 +3620,10 @@ export const updateXosanPacks = pool =>
     return downloadAndInstallXosanPack(pack, pool, { version: pack.version })
   })
 
+// XOSTOR   --------------------------------------------------------------------
+
+export const createXostorSr = params => _call('xostor.create', params)
+
 // Licenses --------------------------------------------------------------------
 
 export const getLicenses = ({ productType } = {}) => _call('xoa.licenses.getAll', { productType })
@@ -3430,6 +3686,19 @@ export const subscribeTunnelState = createSubscription(() => _call('xoa.supportT
 export const getApplianceInfo = () => _call('xoa.getApplianceInfo')
 
 export const getApiApplianceInfo = () => fetch('./rest/v0/appliance').then(resp => resp.json())
+
+export const restartXoServer = async () => {
+  await confirm({
+    icon: 'restart',
+    title: _('restartXoServer'),
+    body: _('restartXoServerConfirm'),
+    strongConfirm: {
+      messageId: 'restartXoServer',
+    },
+  })
+
+  await _call('xoa.restartXoServer')
+}
 
 // Proxy --------------------------------------------------------------------
 
@@ -3500,6 +3769,11 @@ export const destroyProxyAppliances = proxies =>
 
 export const upgradeProxyAppliance = (proxy, props) =>
   _call('proxy.upgradeAppliance', { id: resolveId(proxy), ...props })
+
+export const openTunnelOnProxy = async proxy => {
+  const result = await _call('proxy.openSupportTunnel', { id: resolveId(proxy) }).catch(err => err.message)
+  await alert(_('supportTunnel'), <pre>{result}</pre>)
+}
 
 export const getProxyApplianceUpdaterState = id => _call('proxy.getApplianceUpdaterState', { id })
 
@@ -3593,3 +3867,20 @@ export const esxiListVms = (host, user, password, sslVerify) =>
   _call('esxi.listVms', { host, user, password, sslVerify })
 
 export const importVmsFromEsxi = params => _call('vm.importMultipleFromEsxi', params)
+
+// Github API ---------------------------------------------------------------
+const _callGithubApi = async (endpoint = '') => {
+  const url = new URL('https://api.github.com/repos/vatesfr/xen-orchestra')
+  url.pathname += endpoint
+  const resp = await fetch(url.toString())
+  const json = await resp.json()
+  if (resp.ok) {
+    return json
+  } else {
+    throw new Error(json.message)
+  }
+}
+
+export const getMasterCommit = () => _callGithubApi('/commits/master')
+
+export const compareCommits = (base, head) => _callGithubApi(`/compare/${base}...${head}`)

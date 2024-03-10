@@ -41,6 +41,7 @@ export const IncrementalXapi = class IncrementalXapiVmBackupRunner extends Abstr
 
     const deltaExport = await exportIncrementalVm(exportedVm, baseVm, {
       fullVdisRequired,
+      nbdConcurrency: this._settings.nbdConcurrency,
       preferNbd: this._settings.preferNbd,
     })
     // since NBD is network based, if one disk use nbd , all the disk use them
@@ -49,11 +50,11 @@ export const IncrementalXapi = class IncrementalXapiVmBackupRunner extends Abstr
       Task.info('Transfer data using NBD')
     }
 
-    const differentialVhds = {}
+    const isVhdDifferencing = {}
     // since isVhdDifferencingDisk is reading and unshifting data in stream
     // it should be done BEFORE any other stream transform
     await asyncEach(Object.entries(deltaExport.streams), async ([key, stream]) => {
-      differentialVhds[key] = await isVhdDifferencingDisk(stream)
+      isVhdDifferencing[key] = await isVhdDifferencingDisk(stream)
     })
     const sizeContainers = mapValues(deltaExport.streams, stream => watchStreamSize(stream))
 
@@ -68,13 +69,25 @@ export const IncrementalXapi = class IncrementalXapiVmBackupRunner extends Abstr
       writer =>
         writer.transfer({
           deltaExport: forkDeltaExport(deltaExport),
-          differentialVhds,
+          isVhdDifferencing,
           sizeContainers,
           timestamp,
           vm,
           vmSnapshot: exportedVm,
         }),
       'writer.transfer()'
+    )
+
+    // we want to control the uuid of the vhd in the chain
+    // and ensure they are correctly chained
+    await this._callWriters(
+      writer =>
+        writer.updateUuidAndChain({
+          isVhdDifferencing,
+          timestamp,
+          vdis: deltaExport.vdis,
+        }),
+      'writer.updateUuidAndChain()'
     )
 
     this._baseVm = exportedVm
@@ -132,7 +145,7 @@ export const IncrementalXapi = class IncrementalXapiVmBackupRunner extends Abstr
       ])
       const srcVdi = srcVdis[snapshotOf]
       if (srcVdi !== undefined) {
-        baseUuidToSrcVdi.set(baseUuid, srcVdi)
+        baseUuidToSrcVdi.set(baseUuid, srcVdi.uuid)
       } else {
         debug('ignore snapshot VDI because no longer present on VM', {
           vdi: baseUuid,
@@ -153,18 +166,18 @@ export const IncrementalXapi = class IncrementalXapiVmBackupRunner extends Abstr
     }
 
     const fullVdisRequired = new Set()
-    baseUuidToSrcVdi.forEach((srcVdi, baseUuid) => {
+    baseUuidToSrcVdi.forEach((srcVdiUuid, baseUuid) => {
       if (presentBaseVdis.has(baseUuid)) {
         debug('found base VDI', {
           base: baseUuid,
-          vdi: srcVdi.uuid,
+          vdi: srcVdiUuid,
         })
       } else {
         debug('missing base VDI', {
           base: baseUuid,
-          vdi: srcVdi.uuid,
+          vdi: srcVdiUuid,
         })
-        fullVdisRequired.add(srcVdi.uuid)
+        fullVdisRequired.add(srcVdiUuid)
       }
     })
 

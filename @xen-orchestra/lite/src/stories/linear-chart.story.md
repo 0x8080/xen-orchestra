@@ -4,20 +4,18 @@
 
 ```typescript
 type LinearChartData = {
-  label: string;
+  label: string
   data: {
-    timestamp: number;
-    value: number;
-  }[];
-}[];
+    timestamp: number
+    value: number
+  }[]
+}[]
 ```
 
 ### Example
 
 ```vue-template
 <LinearChart
-  title="Chart title"
-  subtitle="Chart subtitle"
   :data="data"
 />
 ```
